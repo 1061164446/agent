@@ -1,0 +1,164 @@
+后端开发规范
+1. 代码规范
+1.1 注释要求
+禁止使用 Lombok 注解
+
+每个类、方法、字段都必须包含完整的 Javadoc 注释
+
+注释需说明目的、参数、返回值及可能抛出的异常
+
+目的：保证代码开源质量，便于教学和维护
+
+ 
+
+1.2 命名约定
+方法命名：
+
+getXxx()：必须返回非空结果，否则抛出异常
+
+findXxx()：允许返回 null
+
+checkXxxExist()：执行存在性检查并抛出异常
+
+existXxx()：返回布尔型存在性结果
+
+ 
+
+类命名：
+
+遵循 XxxRequest, XxxDTO, XxxAggregate, XxxEntity 模式
+
+ 
+
+2. 架构规范
+2.1 分层架构
+API层：
+
+使用 Restful 路由风格
+
+接收参数使用 XxxRequestObject
+
+必须使用 @Validated 进行基础数据校验
+
+ 
+
+Application层：
+
+负责业务流程编排
+
+使用 XxxDTO 进行数据传输
+
+执行业务逻辑校验（数据存在性、业务规则等）
+
+ 
+
+Domain层：
+
+使用 XxxEntity 和 XxxAggregate 表达领域模型
+
+负责核心业务逻辑和领域规则校验
+
+禁止跨领域直接调用
+
+ 
+
+2.2 对象转换
+使用 XxxAssembler 专用类处理对象转换
+
+允许合理使用 BeanUtils.copy 进行简单属性复制
+
+转换规则：
+
+API → Application：RequestObject → DTO
+
+Application → Domain：DTO → Entity
+
+Domain → Application：Entity/Aggregate → DTO
+
+ 
+
+3. 数据库操作规范
+3.1 查询操作
+必须明确区分严格查询和宽松查询：
+
+/**
+ * 获取服务商信息（必须存在）
+ * @param providerId 服务商ID
+ * @param userId 用户ID
+ * @return 服务商实体
+ * @throws BusinessException 当服务商不存在时抛出
+ */
+public ProviderEntity getProvider(String providerId, String userId) {
+    Wrapper<ProviderEntity> wrapper = Wrappers.<ProviderEntity>lambdaQuery()
+        .eq(ProviderEntity::getId, providerId)
+        .eq(ProviderEntity::getUserId, userId);
+    ProviderEntity provider = providerRepository.selectOne(wrapper);
+    if (provider == null) {
+        throw new BusinessException("服务商不存在");
+    }
+    return provider;
+}
+
+/**
+ * 查找服务商信息（允许不存在）
+ * @param providerId 服务商ID
+ * @param userId 用户ID
+ * @return 服务商实体，可能为null
+ */
+public ProviderEntity findProvider(String providerId, String userId) {
+    Wrapper<ProviderEntity> wrapper = Wrappers.<ProviderEntity>lambdaQuery()
+        .eq(ProviderEntity::getId, providerId)
+        .eq(ProviderEntity::getUserId, userId);
+    return providerRepository.selectOne(wrapper);
+}
+3.2 更新操作
+必须包含用户ID作为操作上下文
+
+采用直接更新方式，避免"先查询后更新"模式
+
+更新失败应抛出具体异常
+
+4. 校验规范
+4.1 三层校验机制
+API层校验：
+
+基础数据格式校验
+
+使用 @Validated 注解
+
+校验字段格式、必填项等
+
+Application层校验：
+
+业务规则校验
+
+数据存在性检查
+
+操作权限验证
+
+Domain层校验：
+
+实体状态校验
+
+领域规则验证
+
+不变条件维护
+
+ 
+
+5. 文档管理
+所有SQL脚本放在 docs/sql 目录下
+
+设计文档放在 docs/design 目录下
+
+API文档使用apifox plugin 生成，因此方法和对象的注释需要写清楚（更好的生成
+
+6.安全规范
+所有涉及到密钥相关必须加密存储，并且不可以明文存储！
+
+所有的用户输入都要经过安全校验！
+
+7. 修订记录
+8. 开发规范
+entity json字段处理
+entity涉及到常量，json，需要使用对象进行包装，表字段通过 json 进行映射，并且通过 infrastructure/converter进行转换，还需要通过 MyBatisTypeHandlerConfig.java 进行注册
