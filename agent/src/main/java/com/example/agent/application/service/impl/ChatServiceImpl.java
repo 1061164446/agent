@@ -12,11 +12,13 @@ import com.example.agent.domain.exception.BusinessException;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.image.ImagePrompt;
 import org.springframework.ai.image.ImageResponse;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -117,6 +119,7 @@ public class ChatServiceImpl implements ChatService {
                     .withModel("qwen-turbo")
                     .withTemperature(0.7d)
                     .withTopP(1.0d)
+                    .withMaxTokens(2048)
                     .build();
 
             // 创建消息数组
@@ -133,9 +136,24 @@ public class ChatServiceImpl implements ChatService {
             // 添加当前用户消息
             messages.add(new UserMessage(chatAggregate.getContent()));
 
+            // 创建Prompt对象
+            Prompt prompt = new Prompt(messages, options);
+
             // 返回流式响应
-            return tongYiChatModel.stream(messages.toArray(new Message[0]))
-                    .map(response -> response);
+            return tongYiChatModel.stream(prompt)
+                    .map(response -> {
+                        if (response.getResult() != null && 
+                            response.getResult().getOutput() != null && 
+                            response.getResult().getOutput().getContent() != null) {
+                            return response.getResult().getOutput().getContent();
+                        }
+                        return "";
+                    })
+                    .filter(content -> !content.isEmpty())
+                    // 确保每个响应作为单独事件发送
+                    .distinctUntilChanged()
+                    // 添加延迟以确保前端能够正确处理
+                    .delayElements(Duration.ofMillis(50));
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {

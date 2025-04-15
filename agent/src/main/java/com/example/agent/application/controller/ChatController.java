@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 
+import java.time.Duration;
 import java.util.UUID;
 
 /**
@@ -70,7 +71,10 @@ public class ChatController {
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> streamMessage(@RequestBody ChatAggregate chatAggregate) {
         try {
-            return chatService.streamMessage(chatAggregate);
+            // 返回流式响应，确保每个响应都被发送为一个完整的SSE事件
+            return chatService.streamMessage(chatAggregate)
+                .map(chunk -> "data: " + chunk + "\n\n")
+                .doOnError(e -> System.err.println("流式输出错误: " + e.getMessage()));
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
@@ -174,7 +178,8 @@ public class ChatController {
                     return "";
                 }
             })
-            .filter(content -> !content.isEmpty()); // 过滤掉空内容
+            .filter(content -> !content.isEmpty()) // 过滤掉空内容
+            .doOnNext(content -> System.out.println("思考步骤流: " + content)); // 调试日志
 
         // 获取实际的AI回答
         ChatAggregate chatAggregate = new ChatAggregate();
@@ -196,10 +201,14 @@ public class ChatController {
                     return "";
                 }
             })
-            .filter(content -> !content.isEmpty());
+            .filter(content -> !content.isEmpty())
+            .doOnNext(content -> System.out.println("AI回答流: " + content)); // 调试日志
 
         // 使用concat确保思考步骤在AI回答之前完成
-        return Flux.concat(thinkingSteps, aiResponse);
+        return Flux.concat(thinkingSteps, aiResponse)
+            // 添加延迟确保前端能够正确处理
+            .delayElements(Duration.ofMillis(50))
+            .doOnError(e -> System.err.println("思考和回答流错误: " + e.getMessage()));
     }
 }
 

@@ -1,0 +1,42 @@
+public Flux<String> streamMessage(ChatAggregate chatAggregate) {
+        try {
+            // 验证聊天请求
+            chatValidator.validateChatRequest(chatAggregate);
+
+            // 配置通义千问API选项
+            TongYiChatOptions options = TongYiChatOptions.builder()
+                    .withModel("qwen-turbo")
+                    .withTemperature(0.7d)
+                    .withTopP(1.0d)
+                    .withStream(true)
+                    .withStreamOptions(StreamOptions.builder()
+                            .withIncludeUsage(true)
+                            .build())
+                    .build();
+            
+            // 设置全局选项
+            tongYiChatModel.setOptions(options);
+
+            // 创建消息数组
+            List<Message> messages = new ArrayList<>();
+            messages.add(new SystemMessage("你是一个专业的客服助手，请用专业、友好的方式回答用户的问题。"));
+
+            // 如果有上下文消息，添加到消息列表
+            if (chatAggregate.getContextMessages() != null) {
+                for (String contextMessage : chatAggregate.getContextMessages()) {
+                    messages.add(new UserMessage(contextMessage));
+                }
+            }
+
+            // 添加当前用户消息
+            messages.add(new UserMessage(chatAggregate.getContent()));
+
+            // 返回流式响应
+            return tongYiChatModel.stream(messages.toArray(new Message[0]))
+                    .map(response -> response);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("处理流式聊天请求时发生错误", e);
+        }
+    } 

@@ -31,12 +31,12 @@
                                 <img :src="assistantAvatar" alt="AI Assistant">
                             </div>
                             <div class="message-status">
-                                思考中...
+                                <span v-if="message.thinkingCompleted" class="completed-thinking">已通过深度思考（用时 {{ message.thinkingTime }}s）</span>
+                                <span v-else class="thinking-in-progress">思考中...{{ message.thinkingTime ? `(${message.thinkingTime}s)` : '' }}</span>
                             </div>
                         </div>
-                        <div class="message-content" :class="message.role">
-                            {{ message.content }}
-                        </div>
+                        <div class="message-content" :class="message.role" v-if="message.role === 'assistant'" v-html="formatMarkdown(message.content)"></div>
+                        <div class="message-content" :class="message.role" v-else>{{ message.content }}</div>
                     </div>
                 </div>
             </div>
@@ -45,6 +45,7 @@
                     <textarea
                         v-model="userInput"
                         @keydown="handleKeyDown"
+                        @focus="handleInputFocus"
                         placeholder="给 AI Assistant 发送消息..."
                         rows="1"
                         ref="inputArea"
@@ -77,6 +78,27 @@
 import { ref, onMounted, nextTick } from 'vue';
 import { ChatService } from '../services/chatService';
 import type { Message } from '../types/chat';
+import { marked } from 'marked';
+
+// 添加类型声明
+declare global {
+    interface Window {
+        _typingTimerId?: ReturnType<typeof setTimeout>;
+        _typingState?: {
+            fullContent: string;
+            currentIndex: number;
+            element: Message | null;
+        };
+    }
+}
+
+// 拓展消息类型，添加思考时间
+declare module '../types/chat' {
+    interface Message {
+        thinkingTime?: number;
+        thinkingCompleted?: boolean;
+    }
+}
 
 const assistantIcon = `
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0051a2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -101,6 +123,8 @@ const messagesContainer = ref<HTMLElement | null>(null);
 const inputArea = ref<HTMLTextAreaElement | null>(null);
 const currentChatId = ref<string>('1');
 const chatHistory = ref([{ id: '1', title: '对话 1' }]);
+const isTypingInProgress = ref(false);
+const shouldStopTyping = ref(false);
 
 const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
@@ -111,19 +135,64 @@ const handleKeyDown = (e: KeyboardEvent) => {
     }
 };
 
+const handleInputFocus = (e: FocusEvent) => {
+    // 设置标志以停止所有打字效果
+    shouldStopTyping.value = true;
+    console.log('输入框获得焦点，停止打字效果');
+    
+    // 如果存在正在进行的打字效果，立即完成
+    if (window._typingState) {
+        const state = window._typingState;
+        
+        // 清除打字计时器
+        if (window._typingTimerId) {
+            clearTimeout(window._typingTimerId);
+            window._typingTimerId = undefined;
+        }
+        
+        // 确保所有内容立即显示
+        if (state.element && state.fullContent) {
+            console.log('立即显示完整内容:', state.fullContent.substring(0, 30) + '...');
+            state.element.content = state.fullContent;
+        }
+    }
+    
+    // 重置打字状态
+    isTypingInProgress.value = false;
+    
+    // 确保滚动到最新消息
+    nextTick(() => scrollToBottom());
+};
+
 const sendMessage = async () => {
     if (!userInput.value.trim() || isProcessing.value) return;
 
     const userMessage = userInput.value.trim();
-    messages.value.push({
-        role: 'user',
-        content: userMessage,
-        type: 'text',
-        timestamp: Date.now()
-    });
+    
+    // 防止重复添加相同的用户消息
+    const hasIdenticalUserMessage = messages.value.some(
+        msg => msg.role === 'user' && 
+              msg.content === userMessage &&
+              Date.now() - (msg.timestamp || 0) < 10000 // 10秒内的相同消息视为重复
+    );
+    
+    if (!hasIdenticalUserMessage) {
+        messages.value.push({
+            role: 'user',
+            content: userMessage,
+            type: 'text',
+            timestamp: Date.now()
+        });
+    } else {
+        console.log('防止重复添加相同的用户消息');
+        return; // 如果是重复消息，直接返回不处理
+    }
 
     userInput.value = '';
     isProcessing.value = true;
+    
+    // 声明在外部作用域，使finally块可以访问
+    let thinkingTimerId: ReturnType<typeof setTimeout> | null = null;
 
     try {
         const reader = await chatService.streamMessageWithThinking(userMessage);
@@ -131,8 +200,42 @@ const sendMessage = async () => {
         let isThinkingPhase = true;
         let currentResponse: Message | null = null;
         let accumulatedContent = '';
+        let thinkingStartTime = Date.now();
+        let lastUpdateTime = Date.now();
+        
+        // 添加思考计时器函数
+        const updateThinkingTime = () => {
+            // 找到所有思考消息
+            messages.value.forEach(msg => {
+                if (msg.role === 'thinking') {
+                    // 更新思考时间
+                    msg.thinkingTime = Math.floor((Date.now() - thinkingStartTime) / 1000);
+                }
+            });
+            
+            // 如果仍在思考中，继续计时
+            if (isThinkingPhase) {
+                thinkingTimerId = setTimeout(updateThinkingTime, 1000);
+            }
+        };
+        
+        // 启动思考计时器
+        updateThinkingTime();
+
+        console.log('开始处理流式响应');
         
         await chatService.processStream(reader, async (response) => {
+            // 确保频繁更新UI不会导致性能问题
+            const now = Date.now();
+            const timeSinceLastUpdate = now - lastUpdateTime;
+            
+            // 对于长消息，限制更新频率
+            if (currentResponse && timeSinceLastUpdate < 50 && accumulatedContent.length > 1000) {
+                return; // 跳过此次更新
+            }
+            
+            lastUpdateTime = now;
+
             if (response.type === 'thinking') {
                 const newContent = response.content.trim();
                 
@@ -140,12 +243,15 @@ const sendMessage = async () => {
                     return;
                 }
 
+                console.log('收到思考步骤:', newContent.substring(0, 30) + '...');
+
                 if (/^\d+\./.test(newContent) || !lastContent) {
                     messages.value.push({
                         role: 'thinking' as const,
                         content: newContent,
                         type: 'thinking' as const,
-                        timestamp: Date.now()
+                        timestamp: Date.now(),
+                        thinkingTime: Math.floor((Date.now() - thinkingStartTime) / 1000)
                     });
                 } else {
                     const lastMessage = messages.value[messages.value.length - 1];
@@ -160,31 +266,81 @@ const sendMessage = async () => {
                     isThinkingPhase = false;
                     currentResponse = null;
                     accumulatedContent = '';
+                    
+                    // 清除思考计时器
+                    if (thinkingTimerId !== null) {
+                        clearTimeout(thinkingTimerId);
+                        thinkingTimerId = null;
+                    }
+                    
+                    // 添加调试日志
+                    console.log('思考过程结束，更新思考消息状态');
+                    
+                    // 只更新现有思考消息的状态，不添加新消息
+                    messages.value.forEach(msg => {
+                        if (msg.role === 'thinking') {
+                            msg.thinkingCompleted = true;
+                            msg.thinkingTime = Math.floor((Date.now() - thinkingStartTime) / 1000);
+                        }
+                    });
+                    
+                    // 如果有多条包含"思考过程结束"的消息，只保留一条
+                    const endMessages = messages.value.filter(
+                        msg => msg.role === 'thinking' && msg.content.includes('思考过程结束')
+                    );
+                    if (endMessages.length > 1) {
+                        for (let i = 1; i < endMessages.length; i++) {
+                            const index = messages.value.indexOf(endMessages[i]);
+                            if (index !== -1) {
+                                messages.value.splice(index, 1);
+                            }
+                        }
+                    }
                 }
             } else if (response.type === 'response') {
                 const newContent = response.content.trim();
                 
                 if (!currentResponse) {
-                    currentResponse = {
-                        role: 'assistant' as const,
-                        content: newContent,
-                        type: 'text' as const,
-                        timestamp: Date.now()
-                    };
-                    messages.value.push(currentResponse);
-                    accumulatedContent = newContent;
-                } else {
-                    // 每次增加一个字符
-                    const diff = newContent.slice(accumulatedContent.length);
-                    if (diff) {
+                    // 检查是否已经有相似内容的响应消息
+                    const hasSimilarResponse = messages.value.some(
+                        msg => msg.role === 'assistant' && 
+                               msg.content && 
+                               msg.content.length > 0 &&
+                               Date.now() - (msg.timestamp || 0) < 5000
+                    );
+                    
+                    if (!hasSimilarResponse) {
+                        currentResponse = {
+                            role: 'assistant' as const,
+                            content: newContent,
+                            type: 'text' as const,
+                            timestamp: Date.now()
+                        };
+                        messages.value.push(currentResponse);
                         accumulatedContent = newContent;
-                        await new Promise(resolve => setTimeout(resolve, 20)); // 添加小延迟
-                        currentResponse.content = accumulatedContent;
+                    }
+                } else {
+                    // 更新现有响应消息
+                    if (newContent !== accumulatedContent) {
+                        const addedContent = newContent.slice(accumulatedContent.length);
+                        if (addedContent) {
+                            // 确保内容正确追加
+                            currentResponse.content = newContent;
+                            accumulatedContent = newContent;
+                            
+                            // 强制更新视图
+                            await nextTick();
+                            messages.value = [...messages.value];
+                        }
                     }
                 }
             }
-            scrollToBottom();
+            
+            // 每次接收到新内容都滚动到底部
+            await nextTick(() => scrollToBottom());
         });
+        
+        console.log('流式处理完成');
     } catch (error) {
         console.error('Error:', error);
         messages.value.push({
@@ -194,6 +350,12 @@ const sendMessage = async () => {
             timestamp: Date.now()
         });
     } finally {
+        // 清除思考计时器
+        if (thinkingTimerId !== null) {
+            clearTimeout(thinkingTimerId);
+            thinkingTimerId = null;
+        }
+        
         isProcessing.value = false;
         scrollToBottom();
     }
@@ -229,6 +391,70 @@ const formatTime = (timestamp: number | undefined) => {
     const hours = date.getHours().toString().padStart(2, '0');
     const minutes = date.getMinutes().toString().padStart(2, '0');
     return `${hours}:${minutes}`;
+};
+
+// 定义formatMarkdown函数
+const formatMarkdown = (text: string): string => {
+    // 配置marked选项
+    marked.setOptions({
+        breaks: true,        // 将\n转换为<br>
+        gfm: true            // 启用GitHub风格Markdown
+    });
+    
+    try {
+        // 解析Markdown文本并确保返回字符串
+        return marked.parse(text) as string;
+    } catch (error) {
+        console.error('Markdown解析错误:', error);
+        return text; // 如果解析失败，返回原始文本
+    }
+};
+
+// 添加调试函数
+const logMessageState = () => {
+    console.log('==== 当前消息状态 ====');
+    console.log('消息总数:', messages.value.length);
+    console.log('思考消息数:', messages.value.filter(msg => msg.role === 'thinking').length);
+    console.log('已完成思考消息数:', messages.value.filter(msg => msg.role === 'thinking' && msg.thinkingCompleted).length);
+    console.log('详细信息:', messages.value.map(msg => ({
+        role: msg.role,
+        type: msg.type,
+        completed: msg.thinkingCompleted,
+        time: msg.thinkingTime,
+        content: msg.content.substring(0, 30) + (msg.content.length > 30 ? '...' : '')
+    })));
+    console.log('=====================');
+};
+
+// 修改打字效果函数，检查是否应该停止
+const typeNextChar = (state: any) => {
+    // 检查是否应该停止打字
+    if (shouldStopTyping.value || !state || !state.element) {
+        isTypingInProgress.value = false;
+        return;
+    }
+    
+    if (state.currentIndex < state.fullContent.length) {
+        // 添加下一个字符
+        state.element.content = state.fullContent.substring(0, state.currentIndex + 1);
+        state.currentIndex++;
+        
+        // 计算延迟
+        let delay = 30;
+        const nextChar = state.fullContent[state.currentIndex];
+        if (nextChar && /[，。！？、；：""''（）【】《》]/.test(nextChar)) {
+            delay = 120; // 标点符号停顿更长
+        }
+        
+        // 继续打字
+        window._typingTimerId = setTimeout(() => typeNextChar(state), delay);
+        
+        // 更新滚动位置
+        nextTick(() => scrollToBottom());
+    } else {
+        // 打字效果完成
+        isTypingInProgress.value = false;
+    }
 };
 
 onMounted(() => {
@@ -429,6 +655,15 @@ onMounted(() => {
     margin-left: 8px;
 }
 
+.message-status .completed-thinking {
+    color: #0051a2;
+    font-weight: 500;
+}
+
+.message-status .thinking-in-progress {
+    color: #6b7280;
+}
+
 .message-content {
     font-size: 14px;
     line-height: 1.6;
@@ -449,11 +684,36 @@ onMounted(() => {
 
 .message-content.assistant {
     color: #000000;
-    padding-left: 44px;  /* 添加左边距，与思考内容对齐 */
+    padding-left: 44px;
     line-height: 1.6;
     font-size: 15px;
     white-space: pre-wrap;
-    margin-top: 0;
+}
+
+.message-content.assistant strong {
+    font-weight: 600;
+    color: #000000;
+}
+
+.message-content.assistant code {
+    background: #f5f5f7;
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.9em;
+}
+
+.message-content.assistant pre {
+    background: #f5f5f7;
+    padding: 12px;
+    border-radius: 6px;
+    overflow: auto;
+    margin: 8px 0;
+}
+
+.message-content.assistant pre code {
+    background: transparent;
+    padding: 0;
 }
 
 .message-content.thinking {
@@ -583,5 +843,40 @@ textarea::placeholder {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+}
+
+/* 添加打字机效果相关的CSS */
+.message-content.assistant.typewriter-effect {
+    width: fit-content;
+    position: relative;
+}
+
+.message-content.assistant.typewriter-effect::before {
+    content: attr(data-content);
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    white-space: pre-wrap;
+    overflow: hidden;
+    color: #000000;
+    border-right: 3px solid transparent;
+}
+
+/* 解决打字机效果的CSS隔离问题 */
+:deep(.typewriter-effect) {
+    width: fit-content;
+    position: relative;
+}
+
+:deep(.typewriter-effect::before) {
+    content: "";
+    display: block;
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent calc(var(--visible-length, 0) * 1ch), #fff calc(var(--visible-length, 0) * 1ch + 0.1ch));
+    pointer-events: none;
 }
 </style> 

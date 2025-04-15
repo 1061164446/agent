@@ -265,23 +265,33 @@ export class ChatService {
     }
 
     /**
-     * 发送消息并获取带思考过程的响应流
-     * @param content 用户消息内容
+     * 发送流式文本对话，包含思考过程
+     * @param content 用户消息
      * @returns 响应流读取器
      */
     async streamMessageWithThinking(content: string): Promise<ReadableStreamDefaultReader<Uint8Array>> {
+        console.log('开始streamMessageWithThinking请求');
         const response = await fetch(`${this.baseUrl}/api/chat/send/thinking`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ content } as ChatRequest)
+            body: JSON.stringify({ content } as ChatRequest),
+            // 添加缓存控制，防止浏览器缓存流式响应
+            cache: 'no-store'
         });
 
+        if (!response.ok) {
+            console.error('流式请求失败:', response.status, response.statusText);
+            throw new Error(`Stream request failed: ${response.status} ${response.statusText}`);
+        }
+
         if (!response.body) {
+            console.error('响应没有body');
             throw new Error('No response body');
         }
 
+        console.log('成功获取流响应');
         return response.body.getReader();
     }
 
@@ -296,33 +306,55 @@ export class ChatService {
     ): Promise<void> {
         const decoder = new TextDecoder();
         let buffer = '';
+        let chunkCount = 0;
 
         try {
+            console.log('开始处理流数据');
             while (true) {
                 const { done, value } = await reader.read();
                 
                 if (done) {
+                    console.log('流读取完成');
+                    // 处理剩余缓冲区
+                    if (buffer.trim()) {
+                        try {
+                            const response = JSON.parse(buffer.trim()) as ChatResponse;
+                            onMessage(response);
+                        } catch (e) {
+                            console.error('解析最后缓冲区JSON失败:', e, 'buffer:', buffer);
+                        }
+                    }
                     break;
                 }
 
-                buffer += decoder.decode(value, { stream: true });
+                chunkCount++;
+                const chunk = decoder.decode(value, { stream: true });
+                console.log(`接收到数据块 #${chunkCount}:`, chunk.length > 100 ? chunk.substring(0, 100) + '...' : chunk);
+                
+                buffer += chunk;
                 
                 // 处理缓冲区中的完整JSON对象
                 const lines = buffer.split('\n');
-                buffer = lines.pop() || ''; // 保留最后一个不完整的行
+                // 保留最后一个可能不完整的行
+                buffer = lines.pop() || ''; 
 
                 for (const line of lines) {
                     if (line.trim()) {
                         try {
                             const response = JSON.parse(line) as ChatResponse;
+                            console.log('处理JSON响应:', response.type, response.content.length > 30 ? response.content.substring(0, 30) + '...' : response.content);
                             onMessage(response);
                         } catch (e) {
-                            console.error('Failed to parse JSON:', e);
+                            console.error('解析JSON失败:', e, 'line:', line);
                         }
                     }
                 }
             }
+        } catch (error) {
+            console.error('流处理错误:', error);
+            throw error;
         } finally {
+            console.log('释放流读取器');
             reader.releaseLock();
         }
     }
