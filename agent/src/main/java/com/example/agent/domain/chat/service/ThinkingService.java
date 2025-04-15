@@ -43,7 +43,7 @@ public class ThinkingService {
         ChatAggregate thinkingRequest = new ChatAggregate();
         thinkingRequest.setContent(thinkingPrompt);
         thinkingRequest.setSessionId(sessionId);
-        
+
         return chatService.streamMessage(thinkingRequest)
             .filter(content -> content.trim().length() > 0)
             .map(content -> {
@@ -55,7 +55,7 @@ public class ThinkingService {
                 return step;
             })
             .filter(step -> step.getContent().length() > 0)
-            .takeWhile(step -> !step.getContent().contains("思考过程结束"));
+            .takeUntil(step -> step.getContent().contains("思考过程结束"));
     }
 
     private boolean containsStepMarker(String content, String[] markers) {

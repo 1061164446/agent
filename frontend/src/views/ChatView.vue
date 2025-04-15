@@ -3,9 +3,9 @@
         <!-- 左侧聊天记录列表 -->
         <div class="chat-list">
             <div class="chat-list-header">
-                <h1>AI Hub</h1>
+                <h1>AI Assistant</h1>
                 <button class="new-chat-btn" @click="startNewChat">
-                    <span>+ 新对话</span>
+                    <span>开启新对话</span>
                 </button>
             </div>
             <div class="chat-list-items">
@@ -25,20 +25,49 @@
                 <div v-for="(message, index) in messages" 
                      :key="index"
                      :class="['message', message.role]">
-                    <div class="message-content" :class="{ 'user': message.role === 'user' }">
-                        {{ message.content }}
+                    <div class="message-wrapper" :class="{ 'user-message': message.role === 'user' }">
+                        <div class="message-header" v-if="message.role === 'thinking'">
+                            <div class="avatar">
+                                <img :src="assistantAvatar" alt="AI Assistant">
+                            </div>
+                            <div class="message-status">
+                                思考中...
+                            </div>
+                        </div>
+                        <div class="message-content" :class="message.role">
+                            {{ message.content }}
+                        </div>
                     </div>
                 </div>
             </div>
             <div class="chat-input-container">
-                <textarea
-                    v-model="userInput"
-                    @keydown.enter.prevent="sendMessage"
-                    placeholder="输入消息..."
-                    rows="1"
-                    ref="inputArea"
-                ></textarea>
-                <button @click="sendMessage" :disabled="isProcessing">发送</button>
+                <div class="input-wrapper">
+                    <textarea
+                        v-model="userInput"
+                        @keydown="handleKeyDown"
+                        placeholder="给 AI Assistant 发送消息..."
+                        rows="1"
+                        ref="inputArea"
+                    ></textarea>
+                    <div class="input-actions">
+                        <button class="send-button" @click="sendMessage" :disabled="isProcessing">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="22" y1="2" x2="11" y2="13"></line>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="input-tips">
+                    <div class="input-tip-item">
+                        <span class="shortcut">Enter</span>
+                        <span>发送</span>
+                    </div>
+                    <div class="input-tip-item">
+                        <span class="shortcut">Shift</span> + <span class="shortcut">Enter</span>
+                        <span>换行</span>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -49,18 +78,38 @@ import { ref, onMounted, nextTick } from 'vue';
 import { ChatService } from '../services/chatService';
 import type { Message } from '../types/chat';
 
-// 更新SVG图标
-const assistantAvatar = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNMTIgMkM2LjQ4IDIgMiA2LjQ4IDIgMTJzNC40OCAxMCAxMCAxMCAxMC00LjQ4IDEwLTEwUzE3LjUyIDIgMTIgMnptMCA0YzIuODUgMCA1LjE1IDIuMyA1LjE1IDUuMTVzLTIuMyA1LjE1LTUuMTUgNS4xNVM2Ljg1IDE0LjcgNi44NSAxMS4xNSA5LjE1IDYgMTIgNnoiIGZpbGw9IiMwMDAiLz48L3N2Zz4=';
-const thinkingAvatar = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNMTIgMkM2LjQ4IDIgMiA2LjQ4IDIgMTJzNC40OCAxMCAxMCAxMCAxMC00LjQ4IDEwLTEwUzE3LjUyIDIgMTIgMnptMCA0YzIuODUgMCA1LjE1IDIuMyA1LjE1IDUuMTVzLTIuMyA1LjE1LTUuMTUgNS4xNVM2Ljg1IDE0LjcgNi44NSAxMS4xNSA5LjE1IDYgMTIgNnptMi0ySDEwdjJoNFY0eiIgZmlsbD0iIzAwMCIvPjwvc3ZnPg==';
+const assistantIcon = `
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0051a2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
+</svg>
+`;
+
+const assistantAvatar = URL.createObjectURL(new Blob([assistantIcon], { type: 'image/svg+xml' }));
 
 const chatService = new ChatService();
-const messages = ref<Message[]>([]);
+const messages = ref<Message[]>([
+    {
+        role: 'assistant',
+        content: '我是 AI Assistant, 很高兴见到你!\n我可以帮你写代码、读文件、写作和创建内容，请把你的任务交给我吧~',
+        type: 'text',
+        timestamp: Date.now()
+    }
+]);
 const userInput = ref('');
 const isProcessing = ref(false);
 const messagesContainer = ref<HTMLElement | null>(null);
 const inputArea = ref<HTMLTextAreaElement | null>(null);
 const currentChatId = ref<string>('1');
 const chatHistory = ref([{ id: '1', title: '对话 1' }]);
+
+const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Enter') {
+        if (!e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    }
+};
 
 const sendMessage = async () => {
     if (!userInput.value.trim() || isProcessing.value) return;
@@ -81,17 +130,16 @@ const sendMessage = async () => {
         let lastContent = '';
         let isThinkingPhase = true;
         let currentResponse: Message | null = null;
+        let accumulatedContent = '';
         
-        await chatService.processStream(reader, (response) => {
+        await chatService.processStream(reader, async (response) => {
             if (response.type === 'thinking') {
                 const newContent = response.content.trim();
                 
-                // 如果内容与上一次相同，不重复显示
                 if (newContent === lastContent) {
                     return;
                 }
-                
-                // 如果是新的思考步骤（数字开头）或第一条思考消息
+
                 if (/^\d+\./.test(newContent) || !lastContent) {
                     messages.value.push({
                         role: 'thinking' as const,
@@ -100,7 +148,6 @@ const sendMessage = async () => {
                         timestamp: Date.now()
                     });
                 } else {
-                    // 更新最后一个思考消息
                     const lastMessage = messages.value[messages.value.length - 1];
                     if (lastMessage.role === 'thinking') {
                         lastMessage.content = newContent;
@@ -109,15 +156,14 @@ const sendMessage = async () => {
                 
                 lastContent = newContent;
                 
-                // 如果思考过程结束，标记进入回答阶段
                 if (newContent.includes('思考过程结束')) {
                     isThinkingPhase = false;
                     currentResponse = null;
+                    accumulatedContent = '';
                 }
             } else if (response.type === 'response') {
                 const newContent = response.content.trim();
                 
-                // 如果是第一次收到回复或没有当前回复
                 if (!currentResponse) {
                     currentResponse = {
                         role: 'assistant' as const,
@@ -126,12 +172,16 @@ const sendMessage = async () => {
                         timestamp: Date.now()
                     };
                     messages.value.push(currentResponse);
+                    accumulatedContent = newContent;
                 } else {
-                    // 更新当前回复内容
-                    currentResponse.content = newContent;
+                    // 每次增加一个字符
+                    const diff = newContent.slice(accumulatedContent.length);
+                    if (diff) {
+                        accumulatedContent = newContent;
+                        await new Promise(resolve => setTimeout(resolve, 20)); // 添加小延迟
+                        currentResponse.content = accumulatedContent;
+                    }
                 }
-                
-                lastContent = newContent;
             }
             scrollToBottom();
         });
@@ -150,11 +200,13 @@ const sendMessage = async () => {
 };
 
 const scrollToBottom = () => {
-    nextTick(() => {
-        if (messagesContainer.value) {
-            messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
-        }
-    });
+    if (messagesContainer.value) {
+        const scrollOptions = {
+            top: messagesContainer.value.scrollHeight,
+            behavior: 'smooth' as const
+        };
+        messagesContainer.value.scrollTo(scrollOptions);
+    }
 };
 
 const startNewChat = () => {
@@ -168,6 +220,17 @@ const switchChat = (chatId: string) => {
     currentChatId.value = chatId;
 };
 
+// 添加时间格式化函数
+const formatTime = (timestamp: number | undefined) => {
+    if (!timestamp) {
+        return '';
+    }
+    const date = new Date(timestamp);
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return `${hours}:${minutes}`;
+};
+
 onMounted(() => {
     scrollToBottom();
 });
@@ -178,67 +241,95 @@ onMounted(() => {
     display: flex;
     width: 100%;
     height: 100vh;
-    background: #fff;
+    background: #ffffff;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
 }
 
 .chat-list {
     width: 260px;
-    border-right: 1px solid rgba(0, 0, 0, 0.1);
     display: flex;
     flex-direction: column;
-    background: #fafafa;
+    background: #ebebeb;  /* 加深左侧背景色 */
+    border: none;
 }
 
 .chat-list-header {
     padding: 16px;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+    background: #ebebeb;
+    border: none;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
 }
 
 .chat-list-header h1 {
-    margin: 0 0 16px;
-    font-size: 20px;
+    margin: 0;
+    font-size: 22px;
     font-weight: 600;
+    color: #1d1d1f;
+    letter-spacing: -0.5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.chat-list-header h1::before {
+    content: "";
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    background: #0071e3;
+    border-radius: 6px;
+    margin-right: 4px;
 }
 
 .new-chat-btn {
     width: 100%;
     padding: 8px 12px;
-    background: #000;
+    background: #0051a2;  /* 加深新对话按钮颜色 */
     border: none;
-    border-radius: 6px;
-    color: #fff;
+    border-radius: 8px;
+    color: #ffffff;
     cursor: pointer;
     font-size: 14px;
     font-weight: 500;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.new-chat-btn:hover {
+    background: #003d7a;  /* 加深新对话按钮悬停颜色 */
+    transform: scale(1.01);
 }
 
 .chat-list-items {
     flex: 1;
     overflow-y: auto;
     padding: 8px;
+    background: #ebebeb;
 }
 
 .chat-list-item {
     display: flex;
     align-items: center;
     padding: 10px 12px;
-    border-radius: 6px;
+    border-radius: 8px;
     cursor: pointer;
     margin-bottom: 4px;
-    color: rgba(0, 0, 0, 0.6);
+    color: #1d1d1f;
     font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
 }
 
 .chat-list-item:hover {
-    background: rgba(0, 0, 0, 0.05);
+    background: rgba(0, 0, 0, 0.08);  /* 加深悬停效果 */
 }
 
 .chat-list-item.active {
-    background: rgba(0, 0, 0, 0.08);
-    color: #000;
+    background: rgba(0, 113, 227, 0.15);  /* 加深选中状态背景 */
+    color: #0051a2;  /* 加深选中状态文字颜色 */
 }
 
 .chat-icon {
@@ -258,132 +349,225 @@ onMounted(() => {
     flex: 1;
     display: flex;
     flex-direction: column;
+    background: #ffffff;
+    border: none;
 }
 
 .chat-messages {
     flex: 1;
     overflow-y: auto;
-    padding: 20px 15% 0;
+    padding: 20px 0;
+    background: #ffffff;
+}
+
+.message {
+    padding: 0 15%;
+    margin-bottom: 24px;
+    position: relative;  /* 添加相对定位 */
+}
+
+.message.thinking::before {
+    content: '';
+    position: absolute;
+    left: calc(15% + 34px);  /* 向左调整，与思考文字保持一定距离 */
+    top: 60px;  /* 进一步下移，避开"思考过程开始"文字 */
+    height: calc(100% - 65px);  /* 调整高度 */
+    width: 1px;
+    background: #e5e7eb;
+}
+
+.message-wrapper {
+    max-width: 100%;
     display: flex;
     flex-direction: column;
 }
 
-.message {
+.message-wrapper.user-message {
     display: flex;
-    margin-bottom: 20px;
+    justify-content: flex-end;
+    align-items: flex-end;
 }
 
-.message.user {
-    justify-content: flex-end;
+.message-wrapper.user-message .message-content {
+    margin-left: auto;
+}
+
+.message-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;  /* 减少头部与内容的间距 */
+}
+
+.message-header.assistant-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.avatar {
+    width: 32px;
+    height: 32px;
+    margin-right: 12px;
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f5f5f7;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+}
+
+.avatar img {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+}
+
+.message-status {
+    font-size: 13px;
+    color: #666666;
+    margin-left: 8px;
 }
 
 .message-content {
-    max-width: 80%;
-    padding: 12px 16px;
-    border-radius: 12px;
-    font-size: 15px;
+    font-size: 14px;
     line-height: 1.6;
+    color: #111827;
     white-space: pre-wrap;
-    background: #f3f3f3;
-    border-bottom-left-radius: 2px;
+    max-width: 80%;
 }
 
 .message-content.user {
-    background: #000;
-    color: #fff;
-    border-bottom-right-radius: 2px;
-    border-bottom-left-radius: 12px;
+    color: #ffffff;
+    background: #0051a2;
+    padding: 12px 16px;
+    border-radius: 12px 12px 2px 12px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    max-width: 80%;
+    margin-left: auto;
 }
 
-.message.thinking {
-    margin-bottom: 4px;
-}
-
-.message.thinking .message-content {
-    position: relative;
-    padding: 8px 16px 8px 24px;
-    background: transparent;
-    color: rgba(0, 0, 0, 0.6);
-    font-size: 14px;
+.message-content.assistant {
+    color: #000000;
+    padding-left: 44px;  /* 添加左边距，与思考内容对齐 */
     line-height: 1.6;
-    border-radius: 0;
+    font-size: 15px;
+    white-space: pre-wrap;
+    margin-top: 0;
 }
 
-.message.thinking .message-content::before {
-    content: '';
-    position: absolute;
-    left: 6px;
-    top: 0;
-    bottom: 0;
-    width: 1px;
-    background: rgba(0, 0, 0, 0.2);
+.message-content.thinking {
+    color: #666666;
+    padding-left: 44px;
+    font-size: 14px;
+    line-height: 1.8;
+    margin-top: 4px;  /* 添加一点间距 */
 }
 
-.message.thinking .message-content::after {
-    content: '';
-    position: absolute;
-    left: 4px;
-    top: 12px;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: rgba(0, 0, 0, 0.3);
+.message-content.thinking.error {
+    color: #dc2626;  /* 错误信息使用红色 */
 }
 
 .chat-input-container {
     padding: 24px 15%;
-    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    background: #ffffff;
+    border: none;
+    position: relative;  /* 添加相对定位 */
+}
+
+.input-wrapper {
     position: relative;
+    border: none;
+    border-radius: 14px;
+    background: #f5f5f7;  /* 改为浅灰色背景 */
+    transition: all 0.3s ease;
+}
+
+.input-tips {
+    position: absolute;
+    left: 0;
+    bottom: -24px;
+    font-size: 12px;
+    color: #86868b;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.input-tip-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.input-tip-item .shortcut {
+    color: #666666;
+    background: #f5f5f7;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11px;
 }
 
 textarea {
     width: 100%;
-    padding: 12px;
-    border: 1px solid rgba(0, 0, 0, 0.1);
-    border-radius: 8px;
+    padding: 20px 60px 20px 20px;
+    min-height: 80px;
+    border: none;
     resize: none;
-    font-size: 14px;
+    font-size: 16px;
     line-height: 1.6;
-    transition: border-color 0.2s;
+    color: #1d1d1f;
+    background: transparent;  /* 改为透明背景 */
+    transition: all 0.3s ease;
 }
 
 textarea:focus {
     outline: none;
-    border-color: #000;
 }
 
-button {
+textarea::placeholder {
+    color: #86868b;
+}
+
+.input-actions {
     position: absolute;
-    right: calc(15% + 12px);
-    bottom: 36px;
-    padding: 4px 12px;
-    background: transparent;
-    color: rgba(0, 0, 0, 0.5);
+    right: 16px;  /* 调整按钮位置 */
+    bottom: 16px;  /* 改为底部对齐 */
+    transform: none;  /* 移除垂直居中 */
+    display: flex;
+    align-items: center;
+}
+
+.send-button {
+    padding: 10px;  /* 增大按钮尺寸 */
+    background: #0051a2;
     border: none;
-    border-radius: 4px;
+    border-radius: 10px;
+    color: #ffffff;
     cursor: pointer;
-    font-size: 14px;
+    transition: all 0.2s ease;
+    margin-right: 4px;
 }
 
-button:hover:not(:disabled) {
-    background: rgba(0, 0, 0, 0.05);
-    color: #000;
+.send-button:hover {
+    background: #003d7a;  /* 加深发送按钮悬停颜色 */
+    transform: scale(1.05);
 }
 
-button:disabled {
-    color: rgba(0, 0, 0, 0.3);
+.send-button:disabled {
+    background: #cccccc;  /* 加深禁用状态颜色 */
+    color: #666666;
     cursor: not-allowed;
+    transform: none;
 }
 
-.generated-image {
-    max-width: 100%;
-    border-radius: 12px;
-    margin-top: 12px;
+.send-button svg {
+    width: 18px;  /* 增大图标尺寸 */
+    height: 18px;
 }
 
-/* 添加滚动条样式 */
 ::-webkit-scrollbar {
-    width: 4px;
+    width: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -391,7 +575,13 @@ button:disabled {
 }
 
 ::-webkit-scrollbar-thumb {
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 4px;
+    background: #b0b0b0;  /* 加深滚动条颜色 */
+    border-radius: 3px;
+}
+
+:deep(*) {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
 }
 </style> 
