@@ -37,7 +37,7 @@ public class ChatValidator {
         if (chatAggregate == null) {
             throw new BusinessException("聊天请求不能为空");
         }
-        validateMessage(chatAggregate.getMessage());
+        validateMessage(chatAggregate.getContent());
 
         // 根据功能类型进行不同的验证
         if ("image".equals(chatAggregate.getFunctionType())) {

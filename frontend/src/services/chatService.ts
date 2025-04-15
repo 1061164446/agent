@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { SSE } from 'sse.js';
+import { ChatRequest, ChatResponse } from '../types/chat';
 
 /**
  * 聊天服务类
@@ -260,6 +261,69 @@ export class ChatService {
         } catch (error) {
             console.error('语音识别失败:', error);
             throw error;
+        }
+    }
+
+    /**
+     * 发送消息并获取带思考过程的响应流
+     * @param content 用户消息内容
+     * @returns 响应流读取器
+     */
+    async streamMessageWithThinking(content: string): Promise<ReadableStreamDefaultReader<Uint8Array>> {
+        const response = await fetch(`${this.baseUrl}/api/chat/send/thinking`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ content } as ChatRequest)
+        });
+
+        if (!response.body) {
+            throw new Error('No response body');
+        }
+
+        return response.body.getReader();
+    }
+
+    /**
+     * 处理流式响应数据
+     * @param reader 响应流读取器
+     * @param onMessage 消息处理回调
+     */
+    async processStream(
+        reader: ReadableStreamDefaultReader<Uint8Array>,
+        onMessage: (response: ChatResponse) => void
+    ): Promise<void> {
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                
+                if (done) {
+                    break;
+                }
+
+                buffer += decoder.decode(value, { stream: true });
+                
+                // 处理缓冲区中的完整JSON对象
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || ''; // 保留最后一个不完整的行
+
+                for (const line of lines) {
+                    if (line.trim()) {
+                        try {
+                            const response = JSON.parse(line) as ChatResponse;
+                            onMessage(response);
+                        } catch (e) {
+                            console.error('Failed to parse JSON:', e);
+                        }
+                    }
+                }
+            }
+        } finally {
+            reader.releaseLock();
         }
     }
 } 

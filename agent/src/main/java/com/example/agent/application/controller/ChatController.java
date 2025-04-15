@@ -3,10 +3,15 @@ package com.example.agent.application.controller;
 import com.example.agent.application.service.ChatService;
 import com.example.agent.domain.chat.ChatAggregate;
 import com.example.agent.domain.exception.BusinessException;
+import com.example.agent.domain.chat.service.ThinkingService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
+
+import java.util.UUID;
 
 /**
  * 聊天控制器
@@ -28,13 +33,14 @@ import reactor.core.publisher.Flux;
 public class ChatController {
 
     private final ChatService chatService;
+    private final ThinkingService thinkingService;
+    private final ObjectMapper objectMapper;
 
-    /**
-     * 构造函数
-     * @param chatService 聊天服务
-     */
-    public ChatController(ChatService chatService) {
+    @Autowired
+    public ChatController(ChatService chatService, ThinkingService thinkingService, ObjectMapper objectMapper) {
         this.chatService = chatService;
+        this.thinkingService = thinkingService;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -144,5 +150,109 @@ public class ChatController {
         } catch (Exception e) {
             throw new RuntimeException("处理语音识别请求时发生错误", e);
         }
+    }
+
+    /**
+     * 处理聊天消息并返回思考过程和回答
+     * @param message 用户消息
+     * @return 思考步骤流
+     */
+    @PostMapping(value = "/send/thinking", produces = MediaType.APPLICATION_NDJSON_VALUE)
+    public Flux<String> sendMessage(@RequestBody ChatRequest message) {
+        String sessionId = UUID.randomUUID().toString();
+        
+        // 首先返回思考步骤
+        Flux<String> thinkingSteps = thinkingService.generateThinkingSteps(message.getContent(), sessionId)
+            .map(step -> {
+                try {
+                    // 确保每个思考步骤都作为独立的消息发送
+                    System.out.println("Sending thinking step: " + step.getContent()); // 添加日志
+                    ChatResponse response = new ChatResponse("thinking", step.getContent());
+                    return objectMapper.writeValueAsString(response) + "\n";
+                } catch (Exception e) {
+                    e.printStackTrace(); // 添加错误日志
+                    return "";
+                }
+            })
+            .filter(content -> !content.isEmpty()); // 过滤掉空内容
+
+        // 获取实际的AI回答
+        ChatAggregate chatAggregate = new ChatAggregate();
+        chatAggregate.setContent(message.getContent());
+        chatAggregate.setSessionId(sessionId);
+
+        // 使用现有的chat服务获取AI回答
+        Flux<String> aiResponse = chatService.streamMessage(chatAggregate)
+            .map(content -> {
+                try {
+                    // 确保这不是思考过程的内容
+                    if (!content.startsWith("思考过程开始") && !content.contains("思考过程结束")) {
+                        ChatResponse response = new ChatResponse("response", content);
+                        return objectMapper.writeValueAsString(response) + "\n";
+                    }
+                    return "";
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    return "";
+                }
+            })
+            .filter(content -> !content.isEmpty());
+
+        // 使用concat确保思考步骤在AI回答之前完成
+        return Flux.concat(thinkingSteps, aiResponse);
+    }
+}
+
+/**
+ * 聊天请求对象
+ */
+class ChatRequest {
+    private String content;
+
+    public String getContent() {
+        return content;
+    }
+
+    public void setContent(String content) {
+        this.content = content;
+    }
+}
+
+/**
+ * 聊天响应对象
+ */
+class ChatResponse {
+    private String type;    // "thinking" 或 "response"
+    private String content;
+    private Long timestamp;
+
+    public ChatResponse(String type, String content) {
+        this.type = type;
+        this.content = content;
+        this.timestamp = System.currentTimeMillis();
+    }
+
+    public String getType() {
+        return type;
+    }
+
+    public void setType(String type) {
+        this.type = type;
+    }
+
+    public String getContent() {
+        return content;
+    }
+
+    public void setContent(String content) {
+        this.content = content;
+    }
+
+    public Long getTimestamp() {
+        return timestamp;
+    }
+
+    public void setTimestamp(Long timestamp) {
+        this.timestamp = timestamp;
     }
 } 

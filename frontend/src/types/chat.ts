@@ -27,4 +27,21 @@ export interface ChatState {
     messages: ChatMessage[];
     loading: boolean;
     streaming: boolean;
+}
+
+export interface Message {
+    role: 'user' | 'assistant' | 'thinking';
+    content: string;
+    type: 'text' | 'image' | 'thinking';
+    timestamp?: number;
+}
+
+export interface ChatRequest {
+    content: string;
+}
+
+export interface ChatResponse {
+    type: 'thinking' | 'response';
+    content: string;
+    timestamp: number;
 } 

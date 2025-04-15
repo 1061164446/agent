@@ -1,188 +1,171 @@
 <template>
-    <div class="chat-container">
-        <div class="chat-header">
-            <div class="chat-type-switch">
-                <button 
-                    :class="['switch-button', chatType === 'text' ? 'active' : '']"
-                    @click="switchChatType('text')"
-                >
-                    文本对话
-                </button>
-                <button 
-                    :class="['switch-button', chatType === 'image' ? 'active' : '']"
-                    @click="switchChatType('image')"
-                >
-                    图片生成
+    <div class="app-container">
+        <!-- 左侧聊天记录列表 -->
+        <div class="chat-list">
+            <div class="chat-list-header">
+                <h1>AI Hub</h1>
+                <button class="new-chat-btn" @click="startNewChat">
+                    <span>+ 新对话</span>
                 </button>
             </div>
+            <div class="chat-list-items">
+                <div v-for="(chat, index) in chatHistory" 
+                     :key="index"
+                     :class="['chat-list-item', { active: currentChatId === chat.id }]"
+                     @click="switchChat(chat.id)">
+                    <span class="chat-icon">💬</span>
+                    <span class="chat-title">对话 {{ chat.id }}</span>
+                </div>
+            </div>
         </div>
-        <div class="chat-messages" ref="messagesContainer">
-            <div v-for="(message, index) in messages" :key="index" 
-                 :class="['message', message.role === 'user' ? 'user-message' : 'assistant-message']">
-                <div class="message-content">
-                    <template v-if="message.type === 'image'">
-                        <img :src="message.content" alt="生成的图片" class="generated-image" />
-                    </template>
-                    <template v-else>
+
+        <!-- 右侧聊天区域 -->
+        <div class="chat-container">
+            <div class="chat-messages" ref="messagesContainer">
+                <div v-for="(message, index) in messages" 
+                     :key="index"
+                     :class="['message', message.role]">
+                    <div class="message-content" :class="{ 'user': message.role === 'user' }">
                         {{ message.content }}
-                    </template>
+                    </div>
                 </div>
             </div>
-            <div v-if="isTyping" class="message assistant-message">
-                <div class="message-content">
-                    <template v-if="chatType === 'image'">
-                        <div class="loading-image">
-                            <div class="loading-spinner"></div>
-                            <span>正在生成图片...</span>
-                        </div>
-                    </template>
-                    <template v-else>
-                        {{ currentMessage }}
-                        <span class="typing-indicator">▋</span>
-                    </template>
-                </div>
+            <div class="chat-input-container">
+                <textarea
+                    v-model="userInput"
+                    @keydown.enter.prevent="sendMessage"
+                    placeholder="输入消息..."
+                    rows="1"
+                    ref="inputArea"
+                ></textarea>
+                <button @click="sendMessage" :disabled="isProcessing">发送</button>
             </div>
-        </div>
-        <div class="chat-input-container">
-            <textarea
-                v-model="userInput"
-                @keydown.enter.prevent="sendMessage"
-                :placeholder="chatType === 'image' ? '描述您想要的图片...' : '输入消息...'"
-                rows="1"
-                ref="inputArea"
-            ></textarea>
-            <button @click="sendMessage" :disabled="isTyping">
-                <span class="button-text">{{ chatType === 'image' ? '生成' : '发送' }}</span>
-            </button>
         </div>
     </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick, watch } from 'vue';
+import { ref, onMounted, nextTick } from 'vue';
 import { ChatService } from '../services/chatService';
+import type { Message } from '../types/chat';
+
+// 更新SVG图标
+const assistantAvatar = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNMTIgMkM2LjQ4IDIgMiA2LjQ4IDIgMTJzNC40OCAxMCAxMCAxMCAxMC00LjQ4IDEwLTEwUzE3LjUyIDIgMTIgMnptMCA0YzIuODUgMCA1LjE1IDIuMyA1LjE1IDUuMTVzLTIuMyA1LjE1LTUuMTUgNS4xNVM2Ljg1IDE0LjcgNi44NSAxMS4xNSA5LjE1IDYgMTIgNnoiIGZpbGw9IiMwMDAiLz48L3N2Zz4=';
+const thinkingAvatar = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNMTIgMkM2LjQ4IDIgMiA2LjQ4IDIgMTJzNC40OCAxMCAxMCAxMCAxMC00LjQ4IDEwLTEwUzE3LjUyIDIgMTIgMnptMCA0YzIuODUgMCA1LjE1IDIuMyA1LjE1IDUuMTVzLTIuMyA1LjE1LTUuMTUgNS4xNVM2Ljg1IDE0LjcgNi44NSAxMS4xNSA5LjE1IDYgMTIgNnptMi0ySDEwdjJoNFY0eiIgZmlsbD0iIzAwMCIvPjwvc3ZnPg==';
 
 const chatService = new ChatService();
-const messages = ref<Array<{ role: 'user' | 'assistant', content: string, type?: 'text' | 'image' }>>([]);
+const messages = ref<Message[]>([]);
 const userInput = ref('');
-const isTyping = ref(false);
-const currentMessage = ref('');
+const isProcessing = ref(false);
 const messagesContainer = ref<HTMLElement | null>(null);
 const inputArea = ref<HTMLTextAreaElement | null>(null);
-const chatType = ref<'text' | 'image'>('text');
+const currentChatId = ref<string>('1');
+const chatHistory = ref([{ id: '1', title: '对话 1' }]);
 
-// 自动调整输入框高度
-const adjustInputHeight = () => {
-    if (inputArea.value) {
-        inputArea.value.style.height = 'auto';
-        inputArea.value.style.height = inputArea.value.scrollHeight + 'px';
-    }
-};
-
-// 监听输入变化
-watch(userInput, () => {
-    nextTick(adjustInputHeight);
-});
-
-// 切换聊天类型
-const switchChatType = (type: 'text' | 'image') => {
-    chatType.value = type;
-    messages.value = [];
-    currentMessage.value = '';
-    isTyping.value = false;
-};
-
-// 发送消息
 const sendMessage = async () => {
-    if (!userInput.value.trim() || isTyping.value) return;
+    if (!userInput.value.trim() || isProcessing.value) return;
 
     const userMessage = userInput.value.trim();
-    console.log('发送用户消息:', userMessage);
-    messages.value.push({ 
-        role: 'user', 
+    messages.value.push({
+        role: 'user',
         content: userMessage,
-        type: 'text'  // 用户消息始终是文本类型
+        type: 'text',
+        timestamp: Date.now()
     });
+
     userInput.value = '';
-    isTyping.value = true;
-    currentMessage.value = '';
+    isProcessing.value = true;
 
     try {
-        if (chatType.value === 'text') {
-            console.log('开始文本对话...');
-            await chatService.streamMessage(
-                userMessage,
-                (text) => {
-                    console.log('收到流式响应:', text);
-                    setTimeout(() => {
-                        currentMessage.value += text;
-                        scrollToBottom();
-                    }, 50);
-                },
-                (error) => {
-                    console.error('流式响应错误:', error);
-                    isTyping.value = false;
-                    messages.value.push({ 
-                        role: 'assistant', 
-                        content: '抱歉，发生了错误，请稍后重试。',
-                        type: 'text'
-                    });
-                },
-                () => {
-                    console.log('流式响应完成，当前消息:', currentMessage.value);
-                    if (currentMessage.value) {
-                        messages.value.push({ 
-                            role: 'assistant', 
-                            content: currentMessage.value,
-                            type: 'text'
-                        });
-                        console.log('消息已添加到历史记录');
-                    }
-                    isTyping.value = false;
-                    currentMessage.value = '';
-                    scrollToBottom();
+        const reader = await chatService.streamMessageWithThinking(userMessage);
+        let lastContent = '';
+        let isThinkingPhase = true;
+        let currentResponse: Message | null = null;
+        
+        await chatService.processStream(reader, (response) => {
+            if (response.type === 'thinking') {
+                const newContent = response.content.trim();
+                
+                // 如果内容与上一次相同，不重复显示
+                if (newContent === lastContent) {
+                    return;
                 }
-            );
-        } else {
-            console.log('开始生成图片...');
-            try {
-                const imageUrl = await chatService.generateImage(userMessage);
-                messages.value.push({ 
-                    role: 'assistant', 
-                    content: imageUrl,
-                    type: 'image'
-                });
-            } catch (error) {
-                console.error('图片生成错误:', error);
-                messages.value.push({ 
-                    role: 'assistant', 
-                    content: `图片生成失败: ${error instanceof Error ? error.message : '未知错误'}`,
-                    type: 'text'
-                });
-            } finally {
-                isTyping.value = false;
-                scrollToBottom();
+                
+                // 如果是新的思考步骤（数字开头）或第一条思考消息
+                if (/^\d+\./.test(newContent) || !lastContent) {
+                    messages.value.push({
+                        role: 'thinking' as const,
+                        content: newContent,
+                        type: 'thinking' as const,
+                        timestamp: Date.now()
+                    });
+                } else {
+                    // 更新最后一个思考消息
+                    const lastMessage = messages.value[messages.value.length - 1];
+                    if (lastMessage.role === 'thinking') {
+                        lastMessage.content = newContent;
+                    }
+                }
+                
+                lastContent = newContent;
+                
+                // 如果思考过程结束，标记进入回答阶段
+                if (newContent.includes('思考过程结束')) {
+                    isThinkingPhase = false;
+                    currentResponse = null;
+                }
+            } else if (response.type === 'response') {
+                const newContent = response.content.trim();
+                
+                // 如果是第一次收到回复或没有当前回复
+                if (!currentResponse) {
+                    currentResponse = {
+                        role: 'assistant' as const,
+                        content: newContent,
+                        type: 'text' as const,
+                        timestamp: Date.now()
+                    };
+                    messages.value.push(currentResponse);
+                } else {
+                    // 更新当前回复内容
+                    currentResponse.content = newContent;
+                }
+                
+                lastContent = newContent;
             }
-        }
-    } catch (error) {
-        console.error('发送消息错误:', error);
-        isTyping.value = false;
-        messages.value.push({ 
-            role: 'assistant', 
-            content: '抱歉，发生了错误，请稍后重试。',
-            type: 'text'
+            scrollToBottom();
         });
+    } catch (error) {
+        console.error('Error:', error);
+        messages.value.push({
+            role: 'assistant',
+            content: '抱歉，发生了错误，请稍后重试。',
+            type: 'text',
+            timestamp: Date.now()
+        });
+    } finally {
+        isProcessing.value = false;
+        scrollToBottom();
     }
 };
 
-// 滚动到底部
 const scrollToBottom = () => {
     nextTick(() => {
         if (messagesContainer.value) {
-            console.log('滚动到底部');
             messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
         }
     });
+};
+
+const startNewChat = () => {
+    const newId = Date.now().toString();
+    chatHistory.value.unshift({ id: newId, title: `对话 ${newId}` });
+    currentChatId.value = newId;
+    messages.value = [];
+};
+
+const switchChat = (chatId: string) => {
+    currentChatId.value = chatId;
 };
 
 onMounted(() => {
@@ -191,259 +174,224 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.chat-container {
-    max-width: 800px;
-    margin: 0 auto;
+.app-container {
+    display: flex;
+    width: 100%;
     height: 100vh;
+    background: #fff;
+}
+
+.chat-list {
+    width: 260px;
+    border-right: 1px solid rgba(0, 0, 0, 0.1);
     display: flex;
     flex-direction: column;
-    background-color: #f5f5f7;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    position: relative;
-    overflow: hidden;
-    border: 1px solid rgba(0, 0, 0, 0.1);
-    border-radius: 12px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    background: #fafafa;
 }
 
-.chat-header {
-    padding: 20px;
-    background-color: rgba(255, 255, 255, 0.8);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+.chat-list-header {
+    padding: 16px;
     border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-    text-align: center;
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    border-top-left-radius: 12px;
-    border-top-right-radius: 12px;
 }
 
-.chat-header h1 {
-    margin: 0;
-    font-size: 24px;
+.chat-list-header h1 {
+    margin: 0 0 16px;
+    font-size: 20px;
     font-weight: 600;
-    color: #1d1d1f;
-    letter-spacing: -0.5px;
+}
+
+.new-chat-btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #000;
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.chat-list-items {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+}
+
+.chat-list-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-bottom: 4px;
+    color: rgba(0, 0, 0, 0.6);
+    font-size: 14px;
+}
+
+.chat-list-item:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.chat-list-item.active {
+    background: rgba(0, 0, 0, 0.08);
+    color: #000;
+}
+
+.chat-icon {
+    margin-right: 10px;
+    font-size: 16px;
+}
+
+.chat-title {
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.chat-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
 }
 
 .chat-messages {
     flex: 1;
     overflow-y: auto;
-    padding: 20px;
+    padding: 20px 15% 0;
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    scroll-behavior: smooth;
-    background-color: rgba(245, 245, 247, 0.5);
-    border-left: 1px solid rgba(0, 0, 0, 0.05);
-    border-right: 1px solid rgba(0, 0, 0, 0.05);
 }
 
 .message {
-    max-width: 80%;
-    padding: 12px 16px;
-    border-radius: 18px;
-    line-height: 1.4;
-    font-size: 16px;
-    animation: fadeIn 0.3s ease-out;
-    position: relative;
-    border: 1px solid rgba(0, 0, 0, 0.05);
-    margin: 8px 0;
+    display: flex;
+    margin-bottom: 20px;
 }
 
-.user-message {
-    align-self: flex-end;
-    background-color: #007AFF;
-    color: white;
-    border-bottom-right-radius: 4px;
-    box-shadow: 0 2px 4px rgba(0, 122, 255, 0.2);
-    border: none;
-    margin-left: auto;
-}
-
-.assistant-message {
-    align-self: flex-start;
-    background-color: white;
-    color: #1d1d1f;
-    border-bottom-left-radius: 4px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    border: 1px solid rgba(0, 0, 0, 0.05);
-    margin-right: auto;
+.message.user {
+    justify-content: flex-end;
 }
 
 .message-content {
+    max-width: 80%;
+    padding: 12px 16px;
+    border-radius: 12px;
+    font-size: 15px;
+    line-height: 1.6;
     white-space: pre-wrap;
-    word-break: break-word;
-    line-height: 1.5;
+    background: #f3f3f3;
+    border-bottom-left-radius: 2px;
 }
 
-.typing-indicator {
-    display: inline-block;
-    animation: blink 1s infinite;
-    margin-left: 2px;
-    color: #007AFF;
+.message-content.user {
+    background: #000;
+    color: #fff;
+    border-bottom-right-radius: 2px;
+    border-bottom-left-radius: 12px;
+}
+
+.message.thinking {
+    margin-bottom: 4px;
+}
+
+.message.thinking .message-content {
+    position: relative;
+    padding: 8px 16px 8px 24px;
+    background: transparent;
+    color: rgba(0, 0, 0, 0.6);
+    font-size: 14px;
+    line-height: 1.6;
+    border-radius: 0;
+}
+
+.message.thinking .message-content::before {
+    content: '';
+    position: absolute;
+    left: 6px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.message.thinking .message-content::after {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 12px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.3);
 }
 
 .chat-input-container {
-    padding: 16px;
-    background-color: rgba(255, 255, 255, 0.8);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    padding: 24px 15%;
     border-top: 1px solid rgba(0, 0, 0, 0.1);
-    display: flex;
-    gap: 12px;
-    align-items: flex-end;
-    position: sticky;
-    bottom: 0;
-    z-index: 10;
-    border-bottom-left-radius: 12px;
-    border-bottom-right-radius: 12px;
+    position: relative;
 }
 
 textarea {
-    flex: 1;
+    width: 100%;
+    padding: 12px;
     border: 1px solid rgba(0, 0, 0, 0.1);
-    border-radius: 18px;
-    padding: 12px 16px;
-    font-size: 16px;
-    line-height: 1.4;
-    background-color: rgba(245, 245, 247, 0.8);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    border-radius: 8px;
     resize: none;
-    outline: none;
-    max-height: 120px;
-    transition: all 0.2s ease;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    font-size: 14px;
+    line-height: 1.6;
+    transition: border-color 0.2s;
 }
 
 textarea:focus {
-    background-color: rgba(229, 229, 231, 0.8);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    border-color: rgba(0, 122, 255, 0.3);
+    outline: none;
+    border-color: #000;
 }
 
 button {
-    background-color: #007AFF;
-    color: white;
+    position: absolute;
+    right: calc(15% + 12px);
+    bottom: 36px;
+    padding: 4px 12px;
+    background: transparent;
+    color: rgba(0, 0, 0, 0.5);
     border: none;
-    border-radius: 18px;
-    padding: 12px 24px;
-    font-size: 16px;
-    font-weight: 500;
+    border-radius: 4px;
     cursor: pointer;
-    transition: all 0.2s ease;
-    box-shadow: 0 2px 4px rgba(0, 122, 255, 0.2);
-}
-
-button:disabled {
-    background-color: #8e8e93;
-    cursor: not-allowed;
-    box-shadow: none;
+    font-size: 14px;
 }
 
 button:hover:not(:disabled) {
-    background-color: #0062cc;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(0, 122, 255, 0.3);
+    background: rgba(0, 0, 0, 0.05);
+    color: #000;
 }
 
-button:active:not(:disabled) {
-    transform: translateY(0);
-    box-shadow: 0 2px 4px rgba(0, 122, 255, 0.2);
-}
-
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-@keyframes blink {
-    0%, 100% {
-        opacity: 1;
-    }
-    50% {
-        opacity: 0;
-    }
-}
-
-/* 自定义滚动条样式 */
-.chat-messages::-webkit-scrollbar {
-    width: 8px;
-}
-
-.chat-messages::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.chat-messages::-webkit-scrollbar-thumb {
-    background-color: rgba(0, 0, 0, 0.2);
-    border-radius: 4px;
-}
-
-.chat-messages::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(0, 0, 0, 0.3);
-}
-
-.chat-type-switch {
-    display: flex;
-    gap: 12px;
-    justify-content: center;
-    margin-bottom: 16px;
-}
-
-.switch-button {
-    background-color: transparent;
-    color: #1d1d1f;
-    border: 1px solid rgba(0, 0, 0, 0.1);
-    border-radius: 20px;
-    padding: 8px 16px;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.switch-button.active {
-    background-color: #007AFF;
-    color: white;
-    border-color: #007AFF;
+button:disabled {
+    color: rgba(0, 0, 0, 0.3);
+    cursor: not-allowed;
 }
 
 .generated-image {
     max-width: 100%;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    border-radius: 12px;
+    margin-top: 12px;
 }
 
-.loading-image {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    padding: 16px;
+/* 添加滚动条样式 */
+::-webkit-scrollbar {
+    width: 4px;
 }
 
-.loading-spinner {
-    width: 32px;
-    height: 32px;
-    border: 3px solid rgba(0, 122, 255, 0.1);
-    border-top-color: #007AFF;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
+::-webkit-scrollbar-track {
+    background: transparent;
 }
 
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
-    }
+::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
 }
 </style> 

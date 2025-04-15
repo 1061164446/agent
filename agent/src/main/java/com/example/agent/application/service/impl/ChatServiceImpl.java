@@ -83,7 +83,7 @@ public class ChatServiceImpl implements ChatService {
             }
 
             // 添加当前用户消息
-            messages.add(new UserMessage(chatAggregate.getMessage()));
+            messages.add(new UserMessage(chatAggregate.getContent()));
 
             // 调用通义千问API
             String responseText = tongYiChatModel.call(messages.toArray(new Message[0]));
@@ -131,7 +131,7 @@ public class ChatServiceImpl implements ChatService {
             }
 
             // 添加当前用户消息
-            messages.add(new UserMessage(chatAggregate.getMessage()));
+            messages.add(new UserMessage(chatAggregate.getContent()));
 
             // 返回流式响应
             return tongYiChatModel.stream(messages.toArray(new Message[0]))
@@ -234,7 +234,7 @@ public class ChatServiceImpl implements ChatService {
         
         // 添加用户输入的主要描述
         prompt.append("请生成一张图片，具体要求如下：\n");
-        prompt.append("1. 主要场景：").append(chatAggregate.getMessage()).append("\n");
+        prompt.append("1. 主要场景：").append(chatAggregate.getContent()).append("\n");
         
         // 添加图片参数
         ChatAggregate.ImageParams params = chatAggregate.getImageParams();
