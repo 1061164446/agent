@@ -35,8 +35,14 @@
                                 <span v-else class="thinking-in-progress">思考中...{{ message.thinkingTime ? `(${message.thinkingTime}s)` : '' }}</span>
                             </div>
                         </div>
-                        <div class="message-content" :class="message.role" v-if="message.role === 'assistant'" v-html="formatMarkdown(message.content)"></div>
-                        <div class="message-content" :class="message.role" v-else>{{ message.content }}</div>
+                        <div class="message-content" :class="[message.role, { thinking: message.isThinking, error: message.isError }]">
+                            <div v-if="message.isThinking" class="thinking-dots">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                            </div>
+                            <div v-else v-html="formatMarkdown(message.content)"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -78,7 +84,30 @@
 import { ref, onMounted, nextTick } from 'vue';
 import { ChatService } from '../services/chatService';
 import type { Message } from '../types/chat';
-import { marked } from 'marked';
+import { marked, type MarkedOptions } from 'marked';
+import hljs from 'highlight.js/lib/core';
+import 'highlight.js/styles/github.css';
+
+// 注册常用语言支持
+import javascript from 'highlight.js/lib/languages/javascript';
+import typescript from 'highlight.js/lib/languages/typescript';
+import python from 'highlight.js/lib/languages/python';
+import java from 'highlight.js/lib/languages/java';
+import cpp from 'highlight.js/lib/languages/cpp';
+import xml from 'highlight.js/lib/languages/xml';
+import json from 'highlight.js/lib/languages/json';
+import bash from 'highlight.js/lib/languages/bash';
+import sql from 'highlight.js/lib/languages/sql';
+
+hljs.registerLanguage('javascript', javascript);
+hljs.registerLanguage('typescript', typescript);
+hljs.registerLanguage('python', python);
+hljs.registerLanguage('java', java);
+hljs.registerLanguage('cpp', cpp);
+hljs.registerLanguage('xml', xml);
+hljs.registerLanguage('json', json);
+hljs.registerLanguage('bash', bash);
+hljs.registerLanguage('sql', sql);
 
 // 添加类型声明
 declare global {
@@ -97,6 +126,8 @@ declare module '../types/chat' {
     interface Message {
         thinkingTime?: number;
         thinkingCompleted?: boolean;
+        isThinking?: boolean;
+        isError?: boolean;
     }
 }
 
@@ -125,6 +156,27 @@ const currentChatId = ref<string>('1');
 const chatHistory = ref([{ id: '1', title: '对话 1' }]);
 const isTypingInProgress = ref(false);
 const shouldStopTyping = ref(false);
+
+// 配置 marked
+marked.setOptions({
+    highlight: function(code: string, lang: string) {
+        if (lang && hljs.getLanguage(lang)) {
+            try {
+                return hljs.highlight(code, lang).value;
+            } catch (e) {
+                console.error(e);
+            }
+        }
+        return code;
+    },
+    breaks: true,
+    gfm: true
+} as MarkedOptions);
+
+// 渲染 Markdown
+const renderMarkdown = (text: string) => {
+    return marked(text)
+}
 
 const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
@@ -679,46 +731,12 @@ onMounted(() => {
 .message-content.assistant {
     background: #ffffff;
     color: #000000;
+    padding: 12px 16px;
     border-radius: 12px 12px 12px 2px;
-}
-
-.message-content::before {
-    content: '';
-    position: absolute;
-    left: -8px;
-    top: 12px;
-    width: 0;
-    height: 0;
-    border-top: 8px solid transparent;
-    border-bottom: 8px solid transparent;
-    border-right: 8px solid var(--bubble-color, #ffffff);
-}
-
-.message-content::after {
-    content: '';
-    position: absolute;
-    left: -9px;
-    top: 12px;
-    width: 0;
-    height: 0;
-    border-top: 8px solid transparent;
-    border-bottom: 8px solid transparent;
-    border-right: 8px solid rgba(0, 0, 0, 0.05);
-    z-index: -1;
-}
-
-.message-content.thinking {
-    background: #f8f9fa;
-    color: #666666;
-    font-size: 14px;
-}
-
-.message-content.thinking::before {
-    --bubble-color: #f8f9fa;
-}
-
-.message-content.assistant::before {
-    --bubble-color: #ffffff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+    max-width: 80%;
+    margin-left: 44px;
+    position: relative;
 }
 
 .message-content.assistant strong {
@@ -745,6 +763,20 @@ onMounted(() => {
 .message-content.assistant pre code {
     background: transparent;
     padding: 0;
+}
+
+.message-content.thinking {
+    background: #f8f9fa;
+    color: #666666;
+    font-size: 14px;
+}
+
+.message-content.thinking::before {
+    --bubble-color: #f8f9fa;
+}
+
+.message-content.assistant::before {
+    --bubble-color: #ffffff;
 }
 
 .message-content.thinking.error {
@@ -868,38 +900,86 @@ textarea::placeholder {
     box-sizing: border-box;
 }
 
-/* 添加打字机效果相关的CSS */
-.message-content.assistant.typewriter-effect {
-    width: fit-content;
-    position: relative;
+/* 代码块样式 */
+.message-content.assistant :deep(pre) {
+    background: #f6f8fa;
+    padding: 16px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 8px 0;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 14px;
+    line-height: 1.45;
+    border: 1px solid #e1e4e8;
 }
 
-.message-content.assistant.typewriter-effect::before {
-    content: attr(data-content);
-    position: absolute;
-    top: 0;
-    left: 0;
+.message-content.assistant :deep(code) {
+    background: #f6f8fa;
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 14px;
+}
+
+/* Markdown 样式 */
+.message-content.assistant :deep(h1),
+.message-content.assistant :deep(h2),
+.message-content.assistant :deep(h3),
+.message-content.assistant :deep(h4),
+.message-content.assistant :deep(h5),
+.message-content.assistant :deep(h6) {
+    margin: 1em 0 0.5em;
+    font-weight: 600;
+    line-height: 1.25;
+}
+
+.message-content.assistant :deep(p) {
+    margin: 0.5em 0;
+    line-height: 1.6;
+}
+
+.message-content.assistant :deep(ul),
+.message-content.assistant :deep(ol) {
+    padding-left: 2em;
+    margin: 0.5em 0;
+}
+
+.message-content.assistant :deep(li) {
+    margin: 0.25em 0;
+}
+
+.message-content.assistant :deep(blockquote) {
+    border-left: 4px solid #0051a2;
+    padding-left: 1em;
+    margin: 0.5em 0;
+    color: #666;
+}
+
+.message-content.assistant :deep(a) {
+    color: #0051a2;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(0, 81, 162, 0.2);
+    transition: all 0.2s ease;
+}
+
+.message-content.assistant :deep(a:hover) {
+    color: #003d7a;
+    border-bottom-color: #003d7a;
+}
+
+.message-content.assistant :deep(table) {
+    border-collapse: collapse;
     width: 100%;
-    height: 100%;
-    white-space: pre-wrap;
-    overflow: hidden;
-    color: #000000;
-    border-right: 3px solid transparent;
+    margin: 0.5em 0;
 }
 
-/* 解决打字机效果的CSS隔离问题 */
-:deep(.typewriter-effect) {
-    width: fit-content;
-    position: relative;
+.message-content.assistant :deep(th),
+.message-content.assistant :deep(td) {
+    border: 1px solid #dfe2e5;
+    padding: 6px 13px;
 }
 
-:deep(.typewriter-effect::before) {
-    content: "";
-    display: block;
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent calc(var(--visible-length, 0) * 1ch), #fff calc(var(--visible-length, 0) * 1ch + 0.1ch));
-    pointer-events: none;
+.message-content.assistant :deep(th) {
+    background: #f6f8fa;
 }
 </style> 
