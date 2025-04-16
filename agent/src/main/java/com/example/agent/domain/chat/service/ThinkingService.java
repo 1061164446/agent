@@ -36,6 +36,7 @@ public class ThinkingService {
     public Flux<ThinkingStep> generateThinkingSteps(String input, String sessionId, List<Message> history) {
         // 1. 构建更详细的思考提示词
         String thinkingPrompt = String.format(
+
                 "在回答问题\"%s\"之前，请按照以下步骤进行思考：\n" +
                         "1. 用户意图分析：分析用户的核心诉求和目标\n" +
                         "2. 问题背景理解：理解问题的上下文和背景信息\n" +
@@ -43,6 +44,7 @@ public class ThinkingService {
                         "4. 答案框架组织：规划回答的整体框架和结构\n" +
                         "\n请开始分析：",
                 input
+
         );
 
 
@@ -76,6 +78,7 @@ public class ThinkingService {
                     return step;
                 })
                 .filter(step -> step.getContent().length() > 0);
+
     }
 
 } 

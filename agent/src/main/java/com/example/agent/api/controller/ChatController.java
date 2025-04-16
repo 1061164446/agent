@@ -17,10 +17,7 @@ import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 
 import java.time.Duration;
-import java.util.Collection;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * 聊天控制器
@@ -184,6 +181,8 @@ public class ChatController {
         Flux<String> thinkingSteps = thinkingService.generateThinkingSteps(content, conversationId, history)
             .map(step -> {
                 try {
+
+                    // 确保每个思考步骤都作为独立的消息发送
                     System.out.println("Sending thinking step: " + step.getContent());
                     ChatResponse response = new ChatResponse("thinking", step.getContent());
                     return objectMapper.writeValueAsString(response) + "\n";
@@ -194,6 +193,7 @@ public class ChatController {
             })
             .filter(stepContent -> !stepContent.isEmpty())
             .doOnNext(stepContent -> System.out.println("思考步骤流: " + stepContent));
+
 
         // 构建ChatAggregate对象
         ChatAggregate chatAggregate = new ChatAggregate();

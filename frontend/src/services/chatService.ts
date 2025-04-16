@@ -271,6 +271,7 @@ export class ChatService {
      */
     async streamMessageWithThinking(content: string): Promise<ReadableStreamDefaultReader<Uint8Array>> {
         console.log('开始streamMessageWithThinking请求');
+<<<<<<< HEAD
         // 从 localStorage 获取或生成 sessionId
         let sessionId = localStorage.getItem('chatSessionId');
         if (!sessionId) {
@@ -290,19 +291,35 @@ export class ChatService {
             // 添加缓存控制，防止浏览器缓存流式响应
             cache: 'no-store'
         });
+=======
+        try {
+            const response = await fetch(`${this.baseUrl}/api/chat/send/thinking`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ content } as ChatRequest),
+                cache: 'no-store'
+            });
+>>>>>>> 1f02db2eb6d4246cb18b1f6fe481c812c1a43a0a
 
-        if (!response.ok) {
-            console.error('流式请求失败:', response.status, response.statusText);
-            throw new Error(`Stream request failed: ${response.status} ${response.statusText}`);
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('流式请求失败:', response.status, response.statusText, errorText);
+                throw new Error(`Stream request failed: ${response.status} ${response.statusText} - ${errorText}`);
+            }
+
+            if (!response.body) {
+                console.error('响应没有body');
+                throw new Error('No response body');
+            }
+
+            console.log('成功获取流响应');
+            return response.body.getReader();
+        } catch (error) {
+            console.error('streamMessageWithThinking 错误:', error);
+            throw error;
         }
-
-        if (!response.body) {
-            console.error('响应没有body');
-            throw new Error('No response body');
-        }
-
-        console.log('成功获取流响应');
-        return response.body.getReader();
     }
 
     /**
@@ -316,7 +333,6 @@ export class ChatService {
     ): Promise<void> {
         const decoder = new TextDecoder();
         let buffer = '';
-        let chunkCount = 0;
 
         try {
             console.log('开始处理流数据');
@@ -337,27 +353,38 @@ export class ChatService {
                     break;
                 }
 
-                chunkCount++;
                 const chunk = decoder.decode(value, { stream: true });
-                console.log(`接收到数据块 #${chunkCount}:`, chunk.length > 100 ? chunk.substring(0, 100) + '...' : chunk);
-                
                 buffer += chunk;
                 
                 // 处理缓冲区中的完整JSON对象
                 const lines = buffer.split('\n');
                 // 保留最后一个可能不完整的行
-                buffer = lines.pop() || ''; 
+                buffer = lines.pop() || '';
 
+                // 收集所有行的内容
+                let fullContent = '';
                 for (const line of lines) {
                     if (line.trim()) {
                         try {
                             const response = JSON.parse(line) as ChatResponse;
-                            console.log('处理JSON响应:', response.type, response.content.length > 30 ? response.content.substring(0, 30) + '...' : response.content);
-                            onMessage(response);
+                            if (response.type === 'response') {
+                                fullContent += response.content;
+                            } else {
+                                onMessage(response);
+                            }
                         } catch (e) {
                             console.error('解析JSON失败:', e, 'line:', line);
                         }
                     }
+                }
+
+                // 如果有完整的响应内容，一次性发送
+                if (fullContent) {
+                    onMessage({
+                        type: 'response',
+                        content: fullContent,
+                        timestamp: Date.now()
+                    });
                 }
             }
         } catch (error) {
