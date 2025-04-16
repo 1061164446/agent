@@ -25,7 +25,8 @@
                 <div v-for="(message, index) in messages" 
                      :key="index"
                      :class="['message', message.role]">
-                    <div class="message-wrapper" :class="{ 'user-message': message.role === 'user' }">
+                    <!-- AI消息（思考和回答）显示在左边 -->
+                    <template v-if="message.role === 'thinking' || message.role === 'assistant'">
                         <div class="message-header" v-if="message.role === 'thinking'">
                             <div class="avatar">
                                 <img :src="assistantAvatar" alt="AI Assistant">
@@ -43,7 +44,13 @@
                             </div>
                             <div v-else v-html="formatMarkdown(message.content)"></div>
                         </div>
-                    </div>
+                    </template>
+                    <!-- 用户消息显示在右边 -->
+                    <template v-else-if="message.role === 'user'">
+                        <div class="message-content">
+                            {{ message.content }}
+                        </div>
+                    </template>
                 </div>
             </div>
             <div class="chat-input-container">
@@ -154,8 +161,6 @@ const messagesContainer = ref<HTMLElement | null>(null);
 const inputArea = ref<HTMLTextAreaElement | null>(null);
 const currentChatId = ref<string>('1');
 const chatHistory = ref([{ id: '1', title: '对话 1' }]);
-const isTypingInProgress = ref(false);
-const shouldStopTyping = ref(false);
 
 // 配置 marked
 marked.setOptions({
@@ -188,30 +193,6 @@ const handleKeyDown = (e: KeyboardEvent) => {
 };
 
 const handleInputFocus = (e: FocusEvent) => {
-    // 设置标志以停止所有打字效果
-    shouldStopTyping.value = true;
-    console.log('输入框获得焦点，停止打字效果');
-    
-    // 如果存在正在进行的打字效果，立即完成
-    if (window._typingState) {
-        const state = window._typingState;
-        
-        // 清除打字计时器
-        if (window._typingTimerId) {
-            clearTimeout(window._typingTimerId);
-            window._typingTimerId = undefined;
-        }
-        
-        // 确保所有内容立即显示
-        if (state.element && state.fullContent) {
-            console.log('立即显示完整内容:', state.fullContent.substring(0, 30) + '...');
-            state.element.content = state.fullContent;
-        }
-    }
-    
-    // 重置打字状态
-    isTypingInProgress.value = false;
-    
     // 确保滚动到最新消息
     nextTick(() => scrollToBottom());
 };
@@ -277,17 +258,6 @@ const sendMessage = async () => {
         console.log('开始处理流式响应');
         
         await chatService.processStream(reader, async (response) => {
-            // 确保频繁更新UI不会导致性能问题
-            const now = Date.now();
-            const timeSinceLastUpdate = now - lastUpdateTime;
-            
-            // 对于长消息，限制更新频率
-            if (currentResponse && timeSinceLastUpdate < 50 && accumulatedContent.length > 1000) {
-                return; // 跳过此次更新
-            }
-            
-            lastUpdateTime = now;
-
             if (response.type === 'thinking') {
                 const newContent = response.content.trim();
                 
@@ -337,17 +307,8 @@ const sendMessage = async () => {
                         timestamp: Date.now()
                     };
                     messages.value.push(currentResponse);
-                    accumulatedContent = newContent;
                 } else {
-                    if (newContent !== accumulatedContent) {
-                        const addedContent = newContent.slice(accumulatedContent.length);
-                        if (addedContent) {
-                            currentResponse.content = newContent;
-                            accumulatedContent = newContent;
-                            await nextTick();
-                            messages.value = [...messages.value];
-                        }
-                    }
+                    currentResponse.content = newContent;
                 }
             }
             
@@ -439,37 +400,6 @@ const logMessageState = () => {
     console.log('=====================');
 };
 
-// 修改打字效果函数，检查是否应该停止
-const typeNextChar = (state: any) => {
-    // 检查是否应该停止打字
-    if (shouldStopTyping.value || !state || !state.element) {
-        isTypingInProgress.value = false;
-        return;
-    }
-    
-    if (state.currentIndex < state.fullContent.length) {
-        // 添加下一个字符
-        state.element.content = state.fullContent.substring(0, state.currentIndex + 1);
-        state.currentIndex++;
-        
-        // 计算延迟
-        let delay = 30;
-        const nextChar = state.fullContent[state.currentIndex];
-        if (nextChar && /[，。！？、；：""''（）【】《》]/.test(nextChar)) {
-            delay = 120; // 标点符号停顿更长
-        }
-        
-        // 继续打字
-        window._typingTimerId = setTimeout(() => typeNextChar(state), delay);
-        
-        // 更新滚动位置
-        nextTick(() => scrollToBottom());
-    } else {
-        // 打字效果完成
-        isTypingInProgress.value = false;
-    }
-};
-
 onMounted(() => {
     scrollToBottom();
 });
@@ -490,13 +420,13 @@ onMounted(() => {
     width: 260px;
     display: flex;
     flex-direction: column;
-    background: #ebebeb;
+    background: #F5F5F5;  /* 苹果侧边栏灰色 */
     border: none;
 }
 
 .chat-list-header {
     padding: 16px;
-    background: #ebebeb;
+    background: #F5F5F5;
     border: none;
     display: flex;
     flex-direction: column;
@@ -527,26 +457,20 @@ onMounted(() => {
 .new-chat-btn {
     width: 100%;
     padding: 8px 12px;
-    background: #0051a2;  /* 加深新对话按钮颜色 */
+    background: #007AFF;
     border: none;
-    border-radius: 8px;
+    border-radius: 10px;
     color: #ffffff;
     cursor: pointer;
     font-size: 14px;
     font-weight: 500;
-    transition: all 0.2s ease;
-}
-
-.new-chat-btn:hover {
-    background: #003d7a;  /* 加深新对话按钮悬停颜色 */
-    transform: scale(1.01);
 }
 
 .chat-list-items {
     flex: 1;
     overflow-y: auto;
     padding: 8px;
-    background: #ebebeb;
+    background: #F5F5F5;
 }
 
 .chat-list-item {
@@ -559,16 +483,11 @@ onMounted(() => {
     color: #1d1d1f;
     font-size: 14px;
     font-weight: 500;
-    transition: all 0.2s ease;
-}
-
-.chat-list-item:hover {
-    background: rgba(0, 0, 0, 0.08);  /* 加深悬停效果 */
 }
 
 .chat-list-item.active {
-    background: rgba(0, 113, 227, 0.15);  /* 加深选中状态背景 */
-    color: #0051a2;  /* 加深选中状态文字颜色 */
+    background: rgba(0, 122, 255, 0.1);  /* 苹果蓝的透明版本 */
+    color: #007AFF;
 }
 
 .chat-icon {
@@ -592,58 +511,11 @@ onMounted(() => {
     border: none;
 }
 
-.chat-container::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: linear-gradient(to right, transparent, rgba(0, 81, 162, 0.1), transparent);
-}
-
 .chat-messages {
     flex: 1;
     overflow-y: auto;
     padding: 20px 0;
     background: #ffffff;
-    scroll-behavior: smooth;
-}
-
-/* 自定义滚动条样式 */
-.chat-messages::-webkit-scrollbar {
-    width: 8px;
-}
-
-.chat-messages::-webkit-scrollbar-track {
-    background: transparent;
-    border-radius: 4px;
-}
-
-.chat-messages::-webkit-scrollbar-thumb {
-    background: rgba(0, 81, 162, 0.2);
-    border-radius: 4px;
-    transition: background 0.3s ease;
-}
-
-.chat-messages::-webkit-scrollbar-thumb:hover {
-    background: rgba(0, 81, 162, 0.4);
-}
-
-/* 添加滚动条阴影效果 */
-.chat-messages {
-    position: relative;
-}
-
-.chat-messages::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    right: 0;
-    width: 8px;
-    height: 100%;
-    background: linear-gradient(to right, rgba(0, 0, 0, 0.05), transparent);
-    pointer-events: none;
 }
 
 .message {
@@ -652,152 +524,88 @@ onMounted(() => {
     position: relative;
     display: flex;
     flex-direction: column;
+    align-items: flex-start;
 }
 
-.message-wrapper {
-    max-width: 100%;
-    display: flex;
-    flex-direction: column;
-}
-
-.message-wrapper.user-message {
-    display: flex;
-    justify-content: flex-end;
+.message.user {
     align-items: flex-end;
 }
 
-.message-wrapper.user-message .message-content {
-    background: #0051a2;
+.message.user .message-content {
+    background: #007AFF;  /* 苹果系统蓝 */
     color: #ffffff;
-    padding: 12px 16px;
-    border-radius: 12px 12px 2px 12px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    border-radius: 20px 20px 4px 20px;
     max-width: 80%;
-    margin-left: auto;
+    position: relative;
+    padding: 12px 16px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
-.message-header {
-    display: flex;
-    align-items: center;
-    margin-bottom: 8px;
+.message.assistant,
+.message.thinking {
+    align-items: flex-start;
 }
 
-.avatar {
-    width: 32px;
-    height: 32px;
-    margin-right: 12px;
-    border-radius: 8px;
-    overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #f5f5f7;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+.message.assistant .message-content {
+    background: #E9E9EB;  /* 回答消息使用系统灰色 */
+    color: #000000;
+    border-radius: 20px 20px 20px 4px;
+    max-width: 80%;
+    position: relative;
+    padding: 12px 16px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
-.message-status {
-    font-size: 13px;
+.message.thinking .message-content {
+    background: #F0F7FF;  /* 思考消息使用浅蓝色背景 */
     color: #666666;
-    margin-left: 8px;
+    font-size: 14px;
+    border-radius: 20px 20px 20px 4px;
+    max-width: 80%;
+    position: relative;
+    padding: 12px 16px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
-.message-status .completed-thinking {
-    color: #0051a2;
-    font-weight: 500;
+.message.thinking .message-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 8px;
+    color: #007AFF;  /* 使用苹果蓝色 */
+    font-size: 13px;
 }
 
-.message-status .thinking-in-progress {
-    color: #6b7280;
+.message.thinking {
+    opacity: 0.9;
+    margin-bottom: 16px;
 }
 
 .message-content {
     position: relative;
-    margin-left: 44px;
-    max-width: 80%;
     padding: 12px 16px;
     border-radius: 12px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
     line-height: 1.8;
 }
 
-.message-content.user {
-    color: #ffffff;
-    background: #0051a2;
-    padding: 12px 16px;
-    border-radius: 12px 12px 2px 12px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-    max-width: 80%;
-    margin-left: auto;
-}
-
-.message-content.assistant {
-    background: #ffffff;
-    color: #000000;
-    padding: 12px 16px;
-    border-radius: 12px 12px 12px 2px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
-    max-width: 80%;
-    margin-left: 44px;
-    position: relative;
-}
-
-.message-content.assistant strong {
-    font-weight: 600;
-    color: #000000;
-}
-
-.message-content.assistant code {
-    background: #f5f5f7;
-    padding: 2px 4px;
-    border-radius: 4px;
-    font-family: monospace;
-    font-size: 0.9em;
-}
-
-.message-content.assistant pre {
-    background: #f5f5f7;
-    padding: 12px;
-    border-radius: 6px;
-    overflow: auto;
-    margin: 8px 0;
-}
-
-.message-content.assistant pre code {
+.message.thinking {
     background: transparent;
-    padding: 0;
-}
-
-.message-content.thinking {
-    background: #f8f9fa;
-    color: #666666;
-    font-size: 14px;
-}
-
-.message-content.thinking::before {
-    --bubble-color: #f8f9fa;
-}
-
-.message-content.assistant::before {
-    --bubble-color: #ffffff;
-}
-
-.message-content.thinking.error {
-    color: #dc2626;  /* 错误信息使用红色 */
+    padding: 0 15%;
+    margin-bottom: 12px;
 }
 
 .chat-input-container {
     padding: 24px 15%;
     background: #ffffff;
     border: none;
-    position: relative;  /* 添加相对定位 */
+    position: relative;
 }
 
 .input-wrapper {
     position: relative;
     border: none;
-    border-radius: 14px;
-    background: #f5f5f7;  /* 改为浅灰色背景 */
-    transition: all 0.3s ease;
+    border-radius: 20px;
+    background: #E9E9EB;
 }
 
 .input-tips {
@@ -834,8 +642,7 @@ textarea {
     font-size: 16px;
     line-height: 1.6;
     color: #1d1d1f;
-    background: transparent;  /* 改为透明背景 */
-    transition: all 0.3s ease;
+    background: transparent;
 }
 
 textarea:focus {
@@ -848,58 +655,31 @@ textarea::placeholder {
 
 .input-actions {
     position: absolute;
-    right: 16px;  /* 调整按钮位置 */
-    bottom: 16px;  /* 改为底部对齐 */
-    transform: none;  /* 移除垂直居中 */
+    right: 16px;
+    bottom: 16px;
     display: flex;
     align-items: center;
 }
 
 .send-button {
-    padding: 10px;  /* 增大按钮尺寸 */
-    background: #0051a2;
+    padding: 10px;
+    background: #007AFF;
     border: none;
-    border-radius: 10px;
+    border-radius: 15px;
     color: #ffffff;
     cursor: pointer;
-    transition: all 0.2s ease;
     margin-right: 4px;
 }
 
-.send-button:hover {
-    background: #003d7a;  /* 加深发送按钮悬停颜色 */
-    transform: scale(1.05);
-}
-
 .send-button:disabled {
-    background: #cccccc;  /* 加深禁用状态颜色 */
+    background: #cccccc;
     color: #666666;
     cursor: not-allowed;
-    transform: none;
 }
 
 .send-button svg {
-    width: 18px;  /* 增大图标尺寸 */
+    width: 18px;
     height: 18px;
-}
-
-::-webkit-scrollbar {
-    width: 6px;
-}
-
-::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-    background: #b0b0b0;  /* 加深滚动条颜色 */
-    border-radius: 3px;
-}
-
-:deep(*) {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
 }
 
 /* 代码块样式 */
@@ -960,13 +740,6 @@ textarea::placeholder {
 .message-content.assistant :deep(a) {
     color: #0051a2;
     text-decoration: none;
-    border-bottom: 1px solid rgba(0, 81, 162, 0.2);
-    transition: all 0.2s ease;
-}
-
-.message-content.assistant :deep(a:hover) {
-    color: #003d7a;
-    border-bottom-color: #003d7a;
 }
 
 .message-content.assistant :deep(table) {
@@ -1003,109 +776,7 @@ textarea::placeholder {
     gap: 20px;
 }
 
-/* 消息通用样式 */
-.message {
-    max-width: 80%;
-    margin: 0 auto;
-    animation: fadeIn 0.3s ease-in-out;
-}
-
-.message-wrapper {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-/* 思考消息样式 */
-.message.thinking {
-    background-color: #ffffff;
-    border-radius: 16px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-    padding: 20px;
-    margin-bottom: 12px;
-    border-left: 4px solid #1890ff;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    transform-origin: top;
-    animation: thinkingSlideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.message.thinking:hover {
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
-    transform: translateY(-2px);
-}
-
-.message.thinking .message-header {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    margin-bottom: 16px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-}
-
-.message.thinking .avatar {
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-    background: linear-gradient(135deg, #e6f7ff 0%, #bae7ff 100%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    transition: all 0.3s ease;
-}
-
-.message.thinking .avatar:hover {
-    transform: scale(1.05);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-}
-
-.message.thinking .avatar img {
-    width: 22px;
-    height: 22px;
-    transition: all 0.3s ease;
-}
-
-.message.thinking .message-status {
-    font-size: 14px;
-    font-weight: 500;
-    transition: all 0.3s ease;
-}
-
-.message.thinking .thinking-in-progress {
-    color: #1890ff;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    animation: pulse 2s infinite;
-}
-
-.message.thinking .completed-thinking {
-    color: #52c41a;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    animation: fadeIn 0.5s ease-out;
-}
-
-.message.thinking .message-content {
-    font-size: 14px;
-    line-height: 1.7;
-    color: #333;
-    padding: 16px;
-    background: linear-gradient(to bottom, #f9f9f9, #f5f5f5);
-    border-radius: 12px;
-    white-space: pre-wrap;
-    transition: all 0.3s ease;
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
-}
-
-.message.thinking .message-content:hover {
-    background: linear-gradient(to bottom, #f5f5f5, #f0f0f0);
-    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.08);
-}
-
-/* 思考动画 */
+/* 思考点样式 */
 .thinking-dots {
     display: flex;
     gap: 6px;
@@ -1116,64 +787,8 @@ textarea::placeholder {
 .thinking-dots span {
     width: 8px;
     height: 8px;
-    background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
+    background: #1890ff;
     border-radius: 50%;
-    animation: bounce 1.4s infinite ease-in-out;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.thinking-dots span:nth-child(1) {
-    animation-delay: -0.32s;
-}
-
-.thinking-dots span:nth-child(2) {
-    animation-delay: -0.16s;
-}
-
-/* 动画效果 */
-@keyframes thinkingSlideIn {
-    from {
-        opacity: 0;
-        transform: translateY(20px) scale(0.98);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-}
-
-@keyframes pulse {
-    0% {
-        opacity: 1;
-    }
-    50% {
-        opacity: 0.6;
-    }
-    100% {
-        opacity: 1;
-    }
-}
-
-@keyframes bounce {
-    0%, 80%, 100% {
-        transform: scale(0);
-        opacity: 0.5;
-    }
-    40% {
-        transform: scale(1);
-        opacity: 1;
-    }
-}
-
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(5px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
 }
 
 /* 响应式调整 */
