@@ -271,12 +271,22 @@ export class ChatService {
      */
     async streamMessageWithThinking(content: string): Promise<ReadableStreamDefaultReader<Uint8Array>> {
         console.log('开始streamMessageWithThinking请求');
+        // 从 localStorage 获取或生成 sessionId
+        let sessionId = localStorage.getItem('chatSessionId');
+        if (!sessionId) {
+            sessionId = Date.now().toString();
+            localStorage.setItem('chatSessionId', sessionId);
+        }
+
         const response = await fetch(`${this.baseUrl}/api/chat/send/thinking`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ content } as ChatRequest),
+            body: JSON.stringify({ 
+                content,
+                sessionId 
+            } as ChatRequest),
             // 添加缓存控制，防止浏览器缓存流式响应
             cache: 'no-store'
         });

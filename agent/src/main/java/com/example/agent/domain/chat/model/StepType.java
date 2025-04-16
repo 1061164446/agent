@@ -5,6 +5,31 @@ package com.example.agent.domain.chat.model;
  */
 public enum StepType {
     /**
+     * 历史更新
+     */
+    HISTORY_UPDATE("历史更新"),
+
+    /**
+     * 关键词提取
+     */
+    KEYWORD_EXTRACTION("关键词提取"),
+
+    /**
+     * 领域识别
+     */
+    DOMAIN_IDENTIFICATION("领域识别"),
+
+    /**
+     * 问题类型
+     */
+    QUESTION_TYPE("问题类型"),
+
+    /**
+     * 上下文分析
+     */
+    CONTEXT_ANALYSIS("上下文分析"),
+
+    /**
      * 理解分析
      */
     UNDERSTANDING("理解分析"),

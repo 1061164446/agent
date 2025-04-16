@@ -38,6 +38,7 @@ export interface Message {
 
 export interface ChatRequest {
     content: string;
+    sessionId?: string;
 }
 
 export interface ChatResponse {
