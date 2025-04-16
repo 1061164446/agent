@@ -1,6 +1,5 @@
-package com.example.agent.infrastructure.exception;
+package com.example.agent.application.exception;
 
-import com.example.agent.domain.exception.BusinessException;
 import com.example.agent.infrastructure.response.ErrorResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;

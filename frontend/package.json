@@ -10,9 +10,11 @@
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.1.0",
+    "@types/marked": "^5.0.2",
     "axios": "^1.5.0",
     "date-fns": "^4.1.0",
     "element-plus": "^2.3.12",
+    "marked": "^15.0.8",
     "pinia": "^2.1.6",
     "sse.js": "^2.6.0",
     "vue": "^3.3.4",

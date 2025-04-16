@@ -1,4 +1,4 @@
-package com.example.agent.application.service.impl;
+package com.example.agent.infrastructure.impl;
 
 import com.alibaba.cloud.ai.tongyi.chat.TongYiChatModel;
 import com.alibaba.cloud.ai.tongyi.chat.TongYiChatOptions;
@@ -8,7 +8,7 @@ import com.alibaba.cloud.ai.tongyi.image.TongYiImagesOptions;
 import com.example.agent.application.service.ChatService;
 import com.example.agent.domain.chat.ChatAggregate;
 import com.example.agent.domain.chat.ChatValidator;
-import com.example.agent.domain.exception.BusinessException;
+import com.example.agent.application.exception.BusinessException;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
@@ -56,7 +56,7 @@ public class ChatServiceImpl implements ChatService {
      * @throws BusinessException 当业务逻辑验证失败时抛出
      */
     @Override
-    public ChatAggregate chat(ChatAggregate chatAggregate) {
+    public ChatAggregate processChat(ChatAggregate chatAggregate) {
         try {
             // 验证聊天请求
             chatValidator.validateChatRequest(chatAggregate);
@@ -109,7 +109,7 @@ public class ChatServiceImpl implements ChatService {
      * @throws BusinessException 当业务逻辑验证失败时抛出
      */
     @Override
-    public Flux<String> streamMessage(ChatAggregate chatAggregate) {
+    public Flux<String> processStreamMessage(ChatAggregate chatAggregate) {
         try {
             // 验证聊天请求
             chatValidator.validateChatRequest(chatAggregate);
@@ -162,44 +162,39 @@ public class ChatServiceImpl implements ChatService {
     }
 
     /**
-     * 生成图片
+     * 处理图片生成请求
      * @param chatAggregate 聊天聚合对象
      * @return 处理后的聊天聚合对象
      * @throws BusinessException 当业务逻辑验证失败时抛出
      */
     @Override
-    public ChatAggregate generateImage(ChatAggregate chatAggregate) {
+    public ChatAggregate processImageGeneration(ChatAggregate chatAggregate) {
         try {
-            // 验证图片参数
-            if (chatAggregate.getImageParams() == null) {
-                throw new BusinessException("图片参数不能为空");
-            }
+            // 验证图片生成请求
+            chatValidator.validateChatRequest(chatAggregate);
+            chatValidator.validateImageParams(chatAggregate.getImageParams());
 
-            // 构建提示词
-            String prompt = buildImagePrompt(chatAggregate);
-            
             // 调用通义千问图片生成API
             TongYiImagesOptions options = TongYiImagesOptions.builder()
-                .withModel("wanx-v1")  // 使用通义千问的图片生成模型
-                .withN(chatAggregate.getImageParams().getN())  // 设置图片数量
-                .build();
+                    .withModel("wanx-v1")
+                    .withN(1)
+                    .build();
 
             // 创建图片生成请求
-            ImagePrompt imagePrompt = new ImagePrompt(prompt, options);
+            ImagePrompt imagePrompt = new ImagePrompt(chatAggregate.getContent(), options);
 
-            // 生成图片
-            ImageResponse response = tongYiImageModel.call(imagePrompt);
-            String imageUrl = response.getResult().getOutput().getUrl();
-            
+            // 调用API生成图片
+            ImageResponse imageResponse = tongYiImageModel.call(imagePrompt);
+
             // 设置响应并验证
-            chatAggregate.setResponse(imageUrl);
+            chatAggregate.setResponse(imageResponse.getResult().getOutput().getUrl());
             chatValidator.validateChatResponse(chatAggregate);
 
             return chatAggregate;
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
-            throw new RuntimeException("生成图片时发生错误", e);
+            throw new RuntimeException("处理图片生成请求时发生错误", e);
         }
     }
 
@@ -240,42 +235,6 @@ public class ChatServiceImpl implements ChatService {
         } catch (Exception e) {
             throw new RuntimeException("调用函数时发生错误", e);
         }
-    }
-
-    /**
-     * 构建图片生成提示词
-     * @param chatAggregate 聊天聚合对象
-     * @return 图片生成提示词
-     */
-    private String buildImagePrompt(ChatAggregate chatAggregate) {
-        StringBuilder prompt = new StringBuilder();
-        
-        // 添加用户输入的主要描述
-        prompt.append("请生成一张图片，具体要求如下：\n");
-        prompt.append("1. 主要场景：").append(chatAggregate.getContent()).append("\n");
-        
-        // 添加图片参数
-        ChatAggregate.ImageParams params = chatAggregate.getImageParams();
-        if (params != null) {
-            if (params.getSize() != null) {
-                prompt.append("2. 图片尺寸：").append(params.getSize()).append("\n");
-            }
-            if (params.getQuality() != null) {
-                prompt.append("3. 图片质量：").append(params.getQuality()).append("\n");
-            }
-            if (params.getN() != null) {
-                prompt.append("4. 生成数量：").append(params.getN()).append("\n");
-            }
-        }
-        
-        // 添加风格要求
-        prompt.append("5. 风格要求：\n");
-        prompt.append("   - 高清画质\n");
-        prompt.append("   - 细节丰富\n");
-        prompt.append("   - 构图合理\n");
-        prompt.append("   - 色彩协调\n");
-        
-        return prompt.toString();
     }
 
     /**

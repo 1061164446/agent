@@ -1,8 +1,8 @@
-package com.example.agent.application.controller;
+package com.example.agent.api.controller;
 
 import com.example.agent.application.service.ChatService;
 import com.example.agent.domain.chat.ChatAggregate;
-import com.example.agent.domain.exception.BusinessException;
+import com.example.agent.application.exception.BusinessException;
 import com.example.agent.domain.chat.service.ThinkingService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -45,15 +45,15 @@ public class ChatController {
     }
 
     /**
-     * 发送单轮文本对话
+     * 处理单轮文本对话请求
      * @param chatAggregate 聊天聚合对象
      * @return 聊天响应
      * @throws BusinessException 当业务逻辑验证失败时抛出
      */
     @PostMapping("/send")
-    public ResponseEntity<ChatAggregate> sendMessage(@RequestBody ChatAggregate chatAggregate) {
+    public ResponseEntity<ChatAggregate> processChat(@RequestBody ChatAggregate chatAggregate) {
         try {
-            ChatAggregate response = chatService.chat(chatAggregate);
+            ChatAggregate response = chatService.processChat(chatAggregate);
             return ResponseEntity.ok(response);
         } catch (BusinessException e) {
             throw e;
@@ -63,16 +63,16 @@ public class ChatController {
     }
 
     /**
-     * 发送流式文本对话
+     * 处理流式文本对话请求
      * @param chatAggregate 聊天聚合对象
      * @return 聊天响应流
      * @throws BusinessException 当业务逻辑验证失败时抛出
      */
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<String> streamMessage(@RequestBody ChatAggregate chatAggregate) {
+    public Flux<String> processStreamMessage(@RequestBody ChatAggregate chatAggregate) {
         try {
             // 返回流式响应，确保每个响应都被发送为一个完整的SSE事件
-            return chatService.streamMessage(chatAggregate)
+            return chatService.processStreamMessage(chatAggregate)
                 .map(chunk -> "data: " + chunk + "\n\n")
                 .doOnError(e -> System.err.println("流式输出错误: " + e.getMessage()));
         } catch (BusinessException e) {
@@ -83,20 +83,38 @@ public class ChatController {
     }
 
     /**
-     * 发送多轮对话（支持上下文）
+     * 处理多轮对话请求（支持上下文）
      * @param chatAggregate 聊天聚合对象
      * @return 聊天响应
      * @throws BusinessException 当业务逻辑验证失败时抛出
      */
     @PostMapping("/conversation")
-    public ResponseEntity<ChatAggregate> sendConversation(@RequestBody ChatAggregate chatAggregate) {
+    public ResponseEntity<ChatAggregate> processConversation(@RequestBody ChatAggregate chatAggregate) {
         try {
-            ChatAggregate response = chatService.chat(chatAggregate);
+            ChatAggregate response = chatService.processChat(chatAggregate);
             return ResponseEntity.ok(response);
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
             throw new RuntimeException("处理多轮对话请求时发生错误", e);
+        }
+    }
+
+    /**
+     * 处理图片生成请求
+     * @param chatAggregate 聊天聚合对象
+     * @return 图片生成结果
+     * @throws BusinessException 当业务逻辑验证失败时抛出
+     */
+    @PostMapping("/image")
+    public ResponseEntity<ChatAggregate> processImageGeneration(@RequestBody ChatAggregate chatAggregate) {
+        try {
+            ChatAggregate response = chatService.processImageGeneration(chatAggregate);
+            return ResponseEntity.ok(response);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("处理图片生成请求时发生错误", e);
         }
     }
 
@@ -110,30 +128,12 @@ public class ChatController {
     public ResponseEntity<ChatAggregate> callFunction(@RequestBody ChatAggregate chatAggregate) {
         try {
             chatAggregate.setFunctionType("function");
-            ChatAggregate response = chatService.chat(chatAggregate);
+            ChatAggregate response = chatService.processChat(chatAggregate);
             return ResponseEntity.ok(response);
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
             throw new RuntimeException("处理函数调用请求时发生错误", e);
-        }
-    }
-
-    /**
-     * 生成图片
-     * @param chatAggregate 聊天聚合对象
-     * @return 图片URL
-     * @throws BusinessException 当业务逻辑验证失败时抛出
-     */
-    @PostMapping("/image")
-    public ResponseEntity<ChatAggregate> generateImage(@RequestBody ChatAggregate chatAggregate) {
-        try {
-            ChatAggregate response = chatService.generateImage(chatAggregate);
-            return ResponseEntity.ok(response);
-        } catch (BusinessException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException("处理图片生成请求时发生错误", e);
         }
     }
 
@@ -147,7 +147,7 @@ public class ChatController {
     public ResponseEntity<ChatAggregate> recognizeSpeech(@RequestBody ChatAggregate chatAggregate) {
         try {
             chatAggregate.setFunctionType("speech");
-            ChatAggregate response = chatService.chat(chatAggregate);
+            ChatAggregate response = chatService.processChat(chatAggregate);
             return ResponseEntity.ok(response);
         } catch (BusinessException e) {
             throw e;
@@ -187,7 +187,7 @@ public class ChatController {
         chatAggregate.setSessionId(sessionId);
 
         // 使用现有的chat服务获取AI回答
-        Flux<String> aiResponse = chatService.streamMessage(chatAggregate)
+        Flux<String> aiResponse = chatService.processStreamMessage(chatAggregate)
             .map(content -> {
                 try {
                     // 确保这不是思考过程的内容

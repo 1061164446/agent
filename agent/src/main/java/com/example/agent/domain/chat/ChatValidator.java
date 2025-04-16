@@ -1,6 +1,6 @@
 package com.example.agent.domain.chat;
 
-import com.example.agent.domain.exception.BusinessException;
+import com.example.agent.application.exception.BusinessException;
 import org.springframework.stereotype.Component;
 
 /**

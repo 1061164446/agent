@@ -264,71 +264,32 @@ const sendMessage = async () => {
                 
                 if (newContent.includes('思考过程结束')) {
                     isThinkingPhase = false;
-                    currentResponse = null;
-                    accumulatedContent = '';
-                    
-                    // 清除思考计时器
-                    if (thinkingTimerId !== null) {
-                        clearTimeout(thinkingTimerId);
-                        thinkingTimerId = null;
-                    }
-                    
-                    // 添加调试日志
-                    console.log('思考过程结束，更新思考消息状态');
-                    
-                    // 只更新现有思考消息的状态，不添加新消息
+                    // 不清除思考消息，只更新状态
                     messages.value.forEach(msg => {
                         if (msg.role === 'thinking') {
                             msg.thinkingCompleted = true;
                             msg.thinkingTime = Math.floor((Date.now() - thinkingStartTime) / 1000);
                         }
                     });
-                    
-                    // 如果有多条包含"思考过程结束"的消息，只保留一条
-                    const endMessages = messages.value.filter(
-                        msg => msg.role === 'thinking' && msg.content.includes('思考过程结束')
-                    );
-                    if (endMessages.length > 1) {
-                        for (let i = 1; i < endMessages.length; i++) {
-                            const index = messages.value.indexOf(endMessages[i]);
-                            if (index !== -1) {
-                                messages.value.splice(index, 1);
-                            }
-                        }
-                    }
                 }
             } else if (response.type === 'response') {
                 const newContent = response.content.trim();
                 
                 if (!currentResponse) {
-                    // 检查是否已经有相似内容的响应消息
-                    const hasSimilarResponse = messages.value.some(
-                        msg => msg.role === 'assistant' && 
-                               msg.content && 
-                               msg.content.length > 0 &&
-                               Date.now() - (msg.timestamp || 0) < 5000
-                    );
-                    
-                    if (!hasSimilarResponse) {
-                        currentResponse = {
-                            role: 'assistant' as const,
-                            content: newContent,
-                            type: 'text' as const,
-                            timestamp: Date.now()
-                        };
-                        messages.value.push(currentResponse);
-                        accumulatedContent = newContent;
-                    }
+                    currentResponse = {
+                        role: 'assistant' as const,
+                        content: newContent,
+                        type: 'text' as const,
+                        timestamp: Date.now()
+                    };
+                    messages.value.push(currentResponse);
+                    accumulatedContent = newContent;
                 } else {
-                    // 更新现有响应消息
                     if (newContent !== accumulatedContent) {
                         const addedContent = newContent.slice(accumulatedContent.length);
                         if (addedContent) {
-                            // 确保内容正确追加
                             currentResponse.content = newContent;
                             accumulatedContent = newContent;
-                            
-                            // 强制更新视图
                             await nextTick();
                             messages.value = [...messages.value];
                         }
@@ -336,7 +297,6 @@ const sendMessage = async () => {
                 }
             }
             
-            // 每次接收到新内容都滚动到底部
             await nextTick(() => scrollToBottom());
         });
         
@@ -350,7 +310,6 @@ const sendMessage = async () => {
             timestamp: Date.now()
         });
     } finally {
-        // 清除思考计时器
         if (thinkingTimerId !== null) {
             clearTimeout(thinkingTimerId);
             thinkingTimerId = null;
@@ -477,7 +436,7 @@ onMounted(() => {
     width: 260px;
     display: flex;
     flex-direction: column;
-    background: #ebebeb;  /* 加深左侧背景色 */
+    background: #ebebeb;
     border: none;
 }
 
@@ -579,27 +538,66 @@ onMounted(() => {
     border: none;
 }
 
+.chat-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(to right, transparent, rgba(0, 81, 162, 0.1), transparent);
+}
+
 .chat-messages {
     flex: 1;
     overflow-y: auto;
     padding: 20px 0;
     background: #ffffff;
+    scroll-behavior: smooth;
+}
+
+/* 自定义滚动条样式 */
+.chat-messages::-webkit-scrollbar {
+    width: 8px;
+}
+
+.chat-messages::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 4px;
+}
+
+.chat-messages::-webkit-scrollbar-thumb {
+    background: rgba(0, 81, 162, 0.2);
+    border-radius: 4px;
+    transition: background 0.3s ease;
+}
+
+.chat-messages::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 81, 162, 0.4);
+}
+
+/* 添加滚动条阴影效果 */
+.chat-messages {
+    position: relative;
+}
+
+.chat-messages::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 8px;
+    height: 100%;
+    background: linear-gradient(to right, rgba(0, 0, 0, 0.05), transparent);
+    pointer-events: none;
 }
 
 .message {
     padding: 0 15%;
     margin-bottom: 24px;
-    position: relative;  /* 添加相对定位 */
-}
-
-.message.thinking::before {
-    content: '';
-    position: absolute;
-    left: calc(15% + 34px);  /* 向左调整，与思考文字保持一定距离 */
-    top: 60px;  /* 进一步下移，避开"思考过程开始"文字 */
-    height: calc(100% - 65px);  /* 调整高度 */
-    width: 1px;
-    background: #e5e7eb;
+    position: relative;
+    display: flex;
+    flex-direction: column;
 }
 
 .message-wrapper {
@@ -615,19 +613,19 @@ onMounted(() => {
 }
 
 .message-wrapper.user-message .message-content {
+    background: #0051a2;
+    color: #ffffff;
+    padding: 12px 16px;
+    border-radius: 12px 12px 2px 12px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    max-width: 80%;
     margin-left: auto;
 }
 
 .message-header {
     display: flex;
     align-items: center;
-    margin-bottom: 12px;  /* 减少头部与内容的间距 */
-}
-
-.message-header.assistant-header {
-    display: flex;
-    align-items: center;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
 }
 
 .avatar {
@@ -641,12 +639,6 @@ onMounted(() => {
     justify-content: center;
     background: #f5f5f7;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
-}
-
-.avatar img {
-    width: 24px;
-    height: 24px;
-    object-fit: contain;
 }
 
 .message-status {
@@ -665,11 +657,13 @@ onMounted(() => {
 }
 
 .message-content {
-    font-size: 14px;
-    line-height: 1.6;
-    color: #111827;
-    white-space: pre-wrap;
+    position: relative;
+    margin-left: 44px;
     max-width: 80%;
+    padding: 12px 16px;
+    border-radius: 12px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+    line-height: 1.8;
 }
 
 .message-content.user {
@@ -683,11 +677,48 @@ onMounted(() => {
 }
 
 .message-content.assistant {
+    background: #ffffff;
     color: #000000;
-    padding-left: 44px;
-    line-height: 1.6;
-    font-size: 15px;
-    white-space: pre-wrap;
+    border-radius: 12px 12px 12px 2px;
+}
+
+.message-content::before {
+    content: '';
+    position: absolute;
+    left: -8px;
+    top: 12px;
+    width: 0;
+    height: 0;
+    border-top: 8px solid transparent;
+    border-bottom: 8px solid transparent;
+    border-right: 8px solid var(--bubble-color, #ffffff);
+}
+
+.message-content::after {
+    content: '';
+    position: absolute;
+    left: -9px;
+    top: 12px;
+    width: 0;
+    height: 0;
+    border-top: 8px solid transparent;
+    border-bottom: 8px solid transparent;
+    border-right: 8px solid rgba(0, 0, 0, 0.05);
+    z-index: -1;
+}
+
+.message-content.thinking {
+    background: #f8f9fa;
+    color: #666666;
+    font-size: 14px;
+}
+
+.message-content.thinking::before {
+    --bubble-color: #f8f9fa;
+}
+
+.message-content.assistant::before {
+    --bubble-color: #ffffff;
 }
 
 .message-content.assistant strong {
@@ -714,14 +745,6 @@ onMounted(() => {
 .message-content.assistant pre code {
     background: transparent;
     padding: 0;
-}
-
-.message-content.thinking {
-    color: #666666;
-    padding-left: 44px;
-    font-size: 14px;
-    line-height: 1.8;
-    margin-top: 4px;  /* 添加一点间距 */
 }
 
 .message-content.thinking.error {

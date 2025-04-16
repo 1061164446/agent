@@ -44,7 +44,7 @@ public class ThinkingService {
         thinkingRequest.setContent(thinkingPrompt);
         thinkingRequest.setSessionId(sessionId);
 
-        return chatService.streamMessage(thinkingRequest)
+        return chatService.processStreamMessage(thinkingRequest)
             .filter(content -> content.trim().length() > 0)
             .map(content -> {
                 ThinkingStep step = new ThinkingStep();

@@ -1,4 +1,4 @@
-package com.example.agent.domain.exception;
+package com.example.agent.application.exception;
 
 /**
  * 业务异常类

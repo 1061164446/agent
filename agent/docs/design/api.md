@@ -2,7 +2,7 @@
 
 ## 1. 基础信息
 
-- 基础路径: `/api/v1`
+- 基础路径: `/com.example.agent.api/v1`
 - 认证方式: Bearer Token
 - 响应格式: JSON
 - 字符编码: UTF-8
@@ -72,7 +72,7 @@ SSE (Server-Sent Events) 流式响应
 
 ### 5.1 普通聊天
 ```bash
-curl -X POST http://localhost:8080/api/v1/chat \
+curl -X POST http://localhost:8080/com.example.agent.api/v1/chat \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
   -d '{"sessionId":"test123","message":"你好"}'
@@ -80,7 +80,7 @@ curl -X POST http://localhost:8080/api/v1/chat \
 
 ### 5.2 流式聊天
 ```bash
-curl -X POST http://localhost:8080/api/v1/stream/chat \
+curl -X POST http://localhost:8080/com.example.agent.api/v1/stream/chat \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
   -d '{"sessionId":"test123","message":"你好"}'
