@@ -30,13 +30,11 @@ public class ThinkingService {
      */
     public Flux<ThinkingStep> generateThinkingSteps(String userInput, String sessionId) {
         String thinkingPrompt = String.format(
-            "在回答问题\"%s\"之前，请按照以下格式输出思考过程：\n" +
-            "思考过程开始\n" +
+            "在回答问题\"%s\"之前，请按照以下步骤进行思考：\n" +
             "1.分析用户意图\n" +
             "2.理解问题背景\n" +
             "3.搜索相关知识\n" +
-            "4.组织答案框架\n" +
-            "思考过程结束",
+            "4.组织答案框架",
             userInput
         );
 
@@ -54,8 +52,7 @@ public class ThinkingService {
                 step.setTimestamp(System.currentTimeMillis());
                 return step;
             })
-            .filter(step -> step.getContent().length() > 0)
-            .takeUntil(step -> step.getContent().contains("思考过程结束"));
+            .filter(step -> step.getContent().length() > 0);
     }
 
     private boolean containsStepMarker(String content, String[] markers) {

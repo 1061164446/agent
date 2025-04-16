@@ -297,6 +297,7 @@ const sendMessage = async () => {
 
                 console.log('收到思考步骤:', newContent.substring(0, 30) + '...');
 
+                // 检查是否是新的思考步骤（通过数字开头的格式）
                 if (/^\d+\./.test(newContent) || !lastContent) {
                     messages.value.push({
                         role: 'thinking' as const,
@@ -313,10 +314,11 @@ const sendMessage = async () => {
                 }
                 
                 lastContent = newContent;
-                
-                if (newContent.includes('思考过程结束')) {
+            } else if (response.type === 'response') {
+                // 当收到第一个response类型消息时，标记思考阶段结束
+                if (isThinkingPhase) {
                     isThinkingPhase = false;
-                    // 不清除思考消息，只更新状态
+                    // 更新所有思考消息的状态
                     messages.value.forEach(msg => {
                         if (msg.role === 'thinking') {
                             msg.thinkingCompleted = true;
@@ -324,7 +326,7 @@ const sendMessage = async () => {
                         }
                     });
                 }
-            } else if (response.type === 'response') {
+
                 const newContent = response.content.trim();
                 
                 if (!currentResponse) {
@@ -981,5 +983,219 @@ textarea::placeholder {
 
 .message-content.assistant :deep(th) {
     background: #f6f8fa;
+}
+
+/* 基础样式 */
+.chat-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background-color: #f5f7fa;
+    padding: 20px;
+}
+
+.chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* 消息通用样式 */
+.message {
+    max-width: 80%;
+    margin: 0 auto;
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+.message-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* 思考消息样式 */
+.message.thinking {
+    background-color: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    padding: 20px;
+    margin-bottom: 12px;
+    border-left: 4px solid #1890ff;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transform-origin: top;
+    animation: thinkingSlideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.message.thinking:hover {
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+    transform: translateY(-2px);
+}
+
+.message.thinking .message-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.message.thinking .avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #e6f7ff 0%, #bae7ff 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    transition: all 0.3s ease;
+}
+
+.message.thinking .avatar:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.message.thinking .avatar img {
+    width: 22px;
+    height: 22px;
+    transition: all 0.3s ease;
+}
+
+.message.thinking .message-status {
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.message.thinking .thinking-in-progress {
+    color: #1890ff;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    animation: pulse 2s infinite;
+}
+
+.message.thinking .completed-thinking {
+    color: #52c41a;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    animation: fadeIn 0.5s ease-out;
+}
+
+.message.thinking .message-content {
+    font-size: 14px;
+    line-height: 1.7;
+    color: #333;
+    padding: 16px;
+    background: linear-gradient(to bottom, #f9f9f9, #f5f5f5);
+    border-radius: 12px;
+    white-space: pre-wrap;
+    transition: all 0.3s ease;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.message.thinking .message-content:hover {
+    background: linear-gradient(to bottom, #f5f5f5, #f0f0f0);
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+/* 思考动画 */
+.thinking-dots {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    padding: 4px;
+}
+
+.thinking-dots span {
+    width: 8px;
+    height: 8px;
+    background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
+    border-radius: 50%;
+    animation: bounce 1.4s infinite ease-in-out;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.thinking-dots span:nth-child(1) {
+    animation-delay: -0.32s;
+}
+
+.thinking-dots span:nth-child(2) {
+    animation-delay: -0.16s;
+}
+
+/* 动画效果 */
+@keyframes thinkingSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes pulse {
+    0% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.6;
+    }
+    100% {
+        opacity: 1;
+    }
+}
+
+@keyframes bounce {
+    0%, 80%, 100% {
+        transform: scale(0);
+        opacity: 0.5;
+    }
+    40% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(5px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+    .message.thinking {
+        padding: 16px;
+        margin-bottom: 10px;
+    }
+    
+    .message.thinking .message-header {
+        gap: 12px;
+        margin-bottom: 12px;
+    }
+    
+    .message.thinking .avatar {
+        width: 32px;
+        height: 32px;
+    }
+    
+    .message.thinking .message-content {
+        padding: 12px;
+        font-size: 13px;
+    }
 }
 </style> 

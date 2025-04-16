@@ -170,16 +170,16 @@ public class ChatController {
             .map(step -> {
                 try {
                     // 确保每个思考步骤都作为独立的消息发送
-                    System.out.println("Sending thinking step: " + step.getContent()); // 添加日志
+                    System.out.println("Sending thinking step: " + step.getContent());
                     ChatResponse response = new ChatResponse("thinking", step.getContent());
                     return objectMapper.writeValueAsString(response) + "\n";
                 } catch (Exception e) {
-                    e.printStackTrace(); // 添加错误日志
+                    e.printStackTrace();
                     return "";
                 }
             })
-            .filter(content -> !content.isEmpty()) // 过滤掉空内容
-            .doOnNext(content -> System.out.println("思考步骤流: " + content)); // 调试日志
+            .filter(content -> !content.isEmpty())
+            .doOnNext(content -> System.out.println("思考步骤流: " + content));
 
         // 获取实际的AI回答
         ChatAggregate chatAggregate = new ChatAggregate();
@@ -190,23 +190,18 @@ public class ChatController {
         Flux<String> aiResponse = chatService.processStreamMessage(chatAggregate)
             .map(content -> {
                 try {
-                    // 确保这不是思考过程的内容
-                    if (!content.startsWith("思考过程开始") && !content.contains("思考过程结束")) {
-                        ChatResponse response = new ChatResponse("response", content);
-                        return objectMapper.writeValueAsString(response) + "\n";
-                    }
-                    return "";
+                    ChatResponse response = new ChatResponse("response", content);
+                    return objectMapper.writeValueAsString(response) + "\n";
                 } catch (Exception e) {
                     e.printStackTrace();
                     return "";
                 }
             })
             .filter(content -> !content.isEmpty())
-            .doOnNext(content -> System.out.println("AI回答流: " + content)); // 调试日志
+            .doOnNext(content -> System.out.println("AI回答流: " + content));
 
         // 使用concat确保思考步骤在AI回答之前完成
         return Flux.concat(thinkingSteps, aiResponse)
-            // 添加延迟确保前端能够正确处理
             .delayElements(Duration.ofMillis(50))
             .doOnError(e -> System.err.println("思考和回答流错误: " + e.getMessage()));
     }
