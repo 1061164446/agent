@@ -24,21 +24,6 @@ import reactor.core.publisher.Flux;
 public interface ChatService {
 
     /**
-     * 处理聊天消息
-     * 
-     * 接收用户消息，调用AI服务获取回复，并返回处理结果
-     * 支持文本对话、图片生成、函数调用等功能
-     * 
-     * @param chatAggregate 聊天领域聚合对象，包含用户消息和功能类型
-     * @return 更新后的聊天领域聚合对象，包含AI回复
-     * 
-     * @throws com.example.agent.application.exception.BusinessException 当业务逻辑验证失败时抛出
-     * @throws org.springframework.web.client.ResourceAccessException 当AI服务连接超时时抛出
-     * @throws RuntimeException 当其他异常发生时抛出
-     */
-    ChatAggregate processChat(ChatAggregate chatAggregate);
-
-    /**
      * 处理流式聊天消息
      * 
      * 接收用户消息，调用AI服务获取流式回复
@@ -53,17 +38,4 @@ public interface ChatService {
      */
     Flux<String> processStreamMessage(ChatAggregate chatAggregate);
 
-    /**
-     * 处理图片生成请求
-     * 
-     * 根据用户描述生成图片
-     * 
-     * @param chatAggregate 聊天领域聚合对象，包含图片生成参数
-     * @return 更新后的聊天领域聚合对象，包含生成的图片URL
-     * 
-     * @throws com.example.agent.application.exception.BusinessException 当业务逻辑验证失败时抛出
-     * @throws org.springframework.web.client.ResourceAccessException 当AI服务连接超时时抛出
-     * @throws RuntimeException 当其他异常发生时抛出
-     */
-    ChatAggregate processImageGeneration(ChatAggregate chatAggregate);
 } 

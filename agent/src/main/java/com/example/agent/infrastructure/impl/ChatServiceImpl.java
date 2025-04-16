@@ -4,7 +4,6 @@ import com.alibaba.cloud.ai.tongyi.chat.TongYiChatModel;
 import com.alibaba.cloud.ai.tongyi.chat.TongYiChatOptions;
 
 import com.alibaba.cloud.ai.tongyi.image.TongYiImagesModel;
-import com.alibaba.cloud.ai.tongyi.image.TongYiImagesOptions;
 import com.example.agent.application.service.ChatService;
 import com.example.agent.domain.chat.ChatAggregate;
 import com.example.agent.domain.chat.ChatValidator;
@@ -13,8 +12,6 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.image.ImagePrompt;
-import org.springframework.ai.image.ImageResponse;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -34,7 +31,6 @@ import java.util.List;
 public class ChatServiceImpl implements ChatService {
 
     private final TongYiChatModel tongYiChatModel;
-    private final TongYiImagesModel tongYiImageModel;
     private final ChatValidator chatValidator;
 
     /**
@@ -45,61 +41,7 @@ public class ChatServiceImpl implements ChatService {
      */
     public ChatServiceImpl(TongYiChatModel tongYiChatModel, TongYiImagesModel tongYiImageModel, ChatValidator chatValidator) {
         this.tongYiChatModel = tongYiChatModel;
-        this.tongYiImageModel = tongYiImageModel;
         this.chatValidator = chatValidator;
-    }
-
-    /**
-     * 处理聊天请求
-     * @param chatAggregate 聊天聚合对象
-     * @return 处理后的聊天聚合对象
-     * @throws BusinessException 当业务逻辑验证失败时抛出
-     */
-    @Override
-    public ChatAggregate processChat(ChatAggregate chatAggregate) {
-        try {
-            // 验证聊天请求
-            chatValidator.validateChatRequest(chatAggregate);
-
-            // 根据功能类型选择不同的处理方式
-            if ("function".equals(chatAggregate.getFunctionType())) {
-                return callFunction(chatAggregate);
-            }
-
-            // 调用通义千问API
-            TongYiChatOptions options = TongYiChatOptions.builder()
-                    .withModel("qwen-turbo")
-                    .withTemperature(0.7d)
-                    .withTopP(1.0d)
-                    .build();
-
-            // 创建消息数组
-            List<Message> messages = new ArrayList<>();
-            messages.add(new SystemMessage("你是一个专业的客服助手，请用专业、友好的方式回答用户的问题。"));
-
-            // 如果有上下文消息，添加到消息列表
-            if (chatAggregate.getContextMessages() != null) {
-                for (String contextMessage : chatAggregate.getContextMessages()) {
-                    messages.add(new UserMessage(contextMessage));
-                }
-            }
-
-            // 添加当前用户消息
-            messages.add(new UserMessage(chatAggregate.getContent()));
-
-            // 调用通义千问API
-            String responseText = tongYiChatModel.call(messages.toArray(new Message[0]));
-            
-            // 设置响应并验证
-            chatAggregate.setResponse(responseText);
-            chatValidator.validateChatResponse(chatAggregate);
-
-            return chatAggregate;
-        } catch (BusinessException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException("处理聊天请求时发生错误", e);
-        }
     }
 
     /**
@@ -161,100 +103,4 @@ public class ChatServiceImpl implements ChatService {
         }
     }
 
-    /**
-     * 处理图片生成请求
-     * @param chatAggregate 聊天聚合对象
-     * @return 处理后的聊天聚合对象
-     * @throws BusinessException 当业务逻辑验证失败时抛出
-     */
-    @Override
-    public ChatAggregate processImageGeneration(ChatAggregate chatAggregate) {
-        try {
-            // 验证图片生成请求
-            chatValidator.validateChatRequest(chatAggregate);
-            chatValidator.validateImageParams(chatAggregate.getImageParams());
-
-            // 调用通义千问图片生成API
-            TongYiImagesOptions options = TongYiImagesOptions.builder()
-                    .withModel("wanx-v1")
-                    .withN(1)
-                    .build();
-
-            // 创建图片生成请求
-            ImagePrompt imagePrompt = new ImagePrompt(chatAggregate.getContent(), options);
-
-            // 调用API生成图片
-            ImageResponse imageResponse = tongYiImageModel.call(imagePrompt);
-
-            // 设置响应并验证
-            chatAggregate.setResponse(imageResponse.getResult().getOutput().getUrl());
-            chatValidator.validateChatResponse(chatAggregate);
-
-            return chatAggregate;
-        } catch (BusinessException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException("处理图片生成请求时发生错误", e);
-        }
-    }
-
-    /**
-     * 调用函数
-     * @param chatAggregate 聊天聚合对象
-     * @return 处理后的聊天聚合对象
-     * @throws BusinessException 当业务逻辑验证失败时抛出
-     */
-    private ChatAggregate callFunction(ChatAggregate chatAggregate) {
-        try {
-            // 验证函数调用参数
-            chatValidator.validateFunctionParams(chatAggregate.getFunctionParams());
-
-            // 构建函数调用提示词
-            String prompt = buildFunctionPrompt(chatAggregate);
-
-            // 调用通义千问API
-            TongYiChatOptions options = TongYiChatOptions.builder()
-                    .withModel("qwen-turbo")
-                    .withTemperature(0.7d)
-                    .withTopP(1.0d)
-                    .build();
-
-            List<Message> messages = new ArrayList<>();
-            messages.add(new SystemMessage("你是一个专业的函数调用助手，请根据用户需求调用相应的函数。"));
-            messages.add(new UserMessage(prompt));
-
-            String responseText = tongYiChatModel.call(messages.toArray(new Message[0]));
-
-            // 设置响应并验证
-            chatAggregate.setResponse(responseText);
-            chatValidator.validateChatResponse(chatAggregate);
-
-            return chatAggregate;
-        } catch (BusinessException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException("调用函数时发生错误", e);
-        }
-    }
-
-    /**
-     * 构建函数调用提示词
-     * @param chatAggregate 聊天聚合对象
-     * @return 函数调用提示词
-     */
-    private String buildFunctionPrompt(ChatAggregate chatAggregate) {
-        ChatAggregate.FunctionParams params = chatAggregate.getFunctionParams();
-        StringBuilder prompt = new StringBuilder();
-        prompt.append("请调用函数：").append(params.getName());
-        
-        if (params.getDescription() != null) {
-            prompt.append("，函数描述：").append(params.getDescription());
-        }
-        
-        if (params.getArguments() != null) {
-            prompt.append("，函数参数：").append(params.getArguments());
-        }
-        
-        return prompt.toString();
-    }
 } 
